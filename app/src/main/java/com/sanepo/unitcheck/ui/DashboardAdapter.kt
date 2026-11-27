@@ -9,6 +9,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.sanepo.unitcheck.BuildConfig
 import com.sanepo.unitcheck.R
 import com.sanepo.unitcheck.engine.ReportExporter
 import com.sanepo.unitcheck.model.DiagnosticItem
@@ -22,6 +23,7 @@ class DashboardAdapter(
     private val onShowFullSpecs: () -> Unit,
     private val onStartCodWizard: () -> Unit,
     private val onResetSession: () -> Unit,
+    private val onOpenAbout: () -> Unit,
     private val onItemClick: (DiagnosticItem) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -29,6 +31,7 @@ class DashboardAdapter(
         object Deck : Row()
         data class Header(val title: String) : Row()
         data class TestRow(val item: DiagnosticItem) : Row()
+        object Footer : Row()
     }
 
     private var rows: List<Row> = emptyList()
@@ -45,6 +48,7 @@ class DashboardAdapter(
             is Row.Deck -> 0
             is Row.Header -> 1
             is Row.TestRow -> 2
+            is Row.Footer -> 3
         }
     }
 
@@ -55,7 +59,8 @@ class DashboardAdapter(
         return when (viewType) {
             0 -> DeckVH(inflater.inflate(R.layout.item_dashboard_deck, parent, false))
             1 -> HeaderVH(inflater.inflate(R.layout.item_section_header, parent, false))
-            else -> TestVH(inflater.inflate(R.layout.item_diagnostic_row, parent, false))
+            2 -> TestVH(inflater.inflate(R.layout.item_diagnostic_row, parent, false))
+            else -> FooterVH(inflater.inflate(R.layout.item_footer_about, parent, false))
         }
     }
 
@@ -64,6 +69,7 @@ class DashboardAdapter(
             is Row.Deck -> (holder as DeckVH).bind()
             is Row.Header -> (holder as HeaderVH).bind(row.title)
             is Row.TestRow -> (holder as TestVH).bind(row.item)
+            is Row.Footer -> (holder as FooterVH).bind()
         }
     }
 
@@ -210,6 +216,23 @@ class DashboardAdapter(
                 }
             }
             root.setOnClickListener { onItemClick(item) }
+        }
+    }
+
+    inner class FooterVH(view: View) : RecyclerView.ViewHolder(view) {
+        private val btnAbout: Button = view.findViewById(R.id.btnFooterOpenAbout)
+        private val tvDevs: TextView = view.findViewById(R.id.tvFooterDevelopers)
+        private val tvOrigin: TextView = view.findViewById(R.id.tvFooterOrigin)
+
+        fun bind() {
+            btnAbout.text = Lang.t(
+                context,
+                "ABOUT, SETTINGAN & CEK UPDATE (v${BuildConfig.VERSION_NAME})",
+                "ABOUT, UPDATE SETTINGS & INFO (v${BuildConfig.VERSION_NAME})"
+            )
+            btnAbout.setOnClickListener { onOpenAbout() }
+            tvDevs.text = "Developers: Kris Dwi Antara • Sanepo Team"
+            tvOrigin.text = "Dibuat di Ponorogo, Jawa Timur Indonesia \u2764\uFE0F"
         }
     }
 }

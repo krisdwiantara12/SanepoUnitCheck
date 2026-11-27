@@ -1,10 +1,12 @@
 package com.sanepo.unitcheck
 
+import com.sanepo.unitcheck.engine.AppUpdateManager
 import com.sanepo.unitcheck.engine.ReportExporter
 import com.sanepo.unitcheck.model.DiagnosticStore
 import com.sanepo.unitcheck.model.PriceCalculatorState
 import com.sanepo.unitcheck.model.TestStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -45,5 +47,16 @@ class DiagnosticStoreTest {
         )
         assertEquals(0L, underwater.maxSafeBuyPriceIdr)
         assertEquals("2.300.000", ReportExporter.formatIdr(good.maxSafeBuyPriceIdr))
+    }
+
+    @Test
+    fun semverComparisonHandlesPatchMinorAndPreReleaseTags() {
+        assertTrue(AppUpdateManager.isRemoteNewer("1.2.0", "v1.2.1"))
+        assertTrue(AppUpdateManager.isRemoteNewer("1.2.0", "v1.10.0"))
+        assertTrue(AppUpdateManager.isRemoteNewer("1.2.0", "release-2.0.0"))
+        assertFalse(AppUpdateManager.isRemoteNewer("1.2.0", "v1.2.0"))
+        assertFalse(AppUpdateManager.isRemoteNewer("1.10.0", "v1.2.9"))
+        assertTrue(AppUpdateManager.isRemoteNewer("1.2.0-beta1", "v1.2.0"))
+        assertFalse(AppUpdateManager.isRemoteNewer("1.2.0", "v1.2.0-rc1"))
     }
 }

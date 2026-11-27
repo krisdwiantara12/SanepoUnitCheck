@@ -2,6 +2,7 @@ package com.sanepo.unitcheck.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -13,6 +14,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.sanepo.unitcheck.R
 import com.sanepo.unitcheck.databinding.ActivityMainBinding
+import com.sanepo.unitcheck.engine.AppUpdateManager
 import com.sanepo.unitcheck.engine.BatteryHardwareReader
 import com.sanepo.unitcheck.engine.CameraEnumerator
 import com.sanepo.unitcheck.engine.DeviceFingerprintEngine
@@ -56,6 +58,7 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
             onShowFullSpecs = { showFullFingerprintDialog() },
             onStartCodWizard = { CodWizardFlow.startWizard(this) },
             onResetSession = { confirmResetSession() },
+            onOpenAbout = { startActivity(Intent(this, AboutActivity::class.java)) },
             onItemClick = { item -> handleDiagnosticItemClick(item) }
         )
 
@@ -67,13 +70,20 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
             refreshTopChrome()
             rebuildDashboardRows()
         }
+        binding.btnOpenAbout.setOnClickListener {
+            startActivity(Intent(this, AboutActivity::class.java))
+        }
         binding.btnOpenReport.setOnClickListener {
             startActivity(Intent(this, ReportActivity::class.java))
+        }
+        binding.tvUpdateBanner.setOnClickListener {
+            startActivity(Intent(this, AboutActivity::class.java))
         }
 
         refreshTopChrome()
         rebuildDashboardRows()
         loadInitialFingerprintAsync()
+        maybeCheckUpdateQuietly()
     }
 
     override fun onStart() {
@@ -100,6 +110,7 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
             "Offline Technician Unit & Hardware Inspector"
         )
         binding.btnLangToggle.text = if (Lang.isIndonesian(this)) "ID" else "EN"
+        binding.btnOpenAbout.text = "ABOUT"
         binding.btnOpenReport.text = Lang.t(this, "LAPORAN", "REPORT")
     }
 
@@ -135,8 +146,29 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
             list.add(DashboardAdapter.Row.Header(Lang.t(this, "KEAMANAN COD & KALKULATOR HARGA", "COD SAFETY & PRICE CALCULATOR")))
             codSafetyGroup.forEach { list.add(DashboardAdapter.Row.TestRow(it)) }
         }
+        list.add(DashboardAdapter.Row.Footer)
 
         adapter.submitData(list)
+    }
+
+    private fun maybeCheckUpdateQuietly() {
+        if (!AppUpdateManager.shouldRunAutoCheckNow(applicationContext)) return
+        val includePre = AppUpdateManager.isIncludePreReleases(applicationContext)
+        executor.execute {
+            val res = AppUpdateManager.checkForUpdate(applicationContext, includePre)
+            if (res is AppUpdateManager.CheckOutcome.Success && res.release.updateAvailable) {
+                runOnUiThread {
+                    if (!isDestroyed && !isFinishing) {
+                        binding.tvUpdateBanner.visibility = View.VISIBLE
+                        binding.tvUpdateBanner.text = Lang.t(
+                            this@MainActivity,
+                            "Update tersedia: ${res.release.tagName} | Ketuk untuk Download & Install di About",
+                            "Update available: ${res.release.tagName} | Tap to open About & Install"
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private fun confirmResetSession() {

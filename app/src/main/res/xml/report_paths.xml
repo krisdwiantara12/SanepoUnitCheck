@@ -2,4 +2,5 @@
 <paths>
     <cache-path name="reports_cache" path="reports/" />
     <files-path name="reports_files" path="reports/" />
+    <cache-path name="updates_cache" path="updates/" />
 </paths>
