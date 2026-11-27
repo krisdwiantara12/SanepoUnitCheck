@@ -66,4 +66,43 @@ class DiagnosticStoreTest {
         assertTrue(AppUpdateManager.isRemoteNewer("1.3.0-beta1", "v1.3.0"))
         assertFalse(AppUpdateManager.isRemoteNewer("1.3.0", "v1.3.0-rc1"))
     }
+
+    @Test
+    fun rawManifestJsonFallbackParsesVersionAndSha256() {
+        val sampleJson = """
+            {
+              "tagName": "v1.3.2",
+              "releaseName": "Sanepo Unit Check v1.3.2",
+              "body": "Auto OTA release",
+              "publishedAt": "2026-11-27T08:00:00Z",
+              "htmlUrl": "https://github.com/krisdwiantara12/SanepoUnitCheck/releases",
+              "isPreRelease": false,
+              "apkAssetName": "SanepoUnitCheck-v1.3.2.apk",
+              "apkDownloadUrl": "https://raw.githubusercontent.com/krisdwiantara12/SanepoUnitCheck/main/releases/SanepoUnitCheck-v1.3.2.apk",
+              "apkSizeBytes": 1350000,
+              "expectedSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }
+        """.trimIndent()
+
+        val updateFrom131 = requireNotNull(
+            AppUpdateManager.parseRawManifestJson(sampleJson, "1.3.1")
+        )
+        assertEquals("v1.3.2", updateFrom131.tagName)
+        assertEquals("SanepoUnitCheck-v1.3.2.apk", updateFrom131.apkAssetName)
+        assertEquals(
+            "https://raw.githubusercontent.com/krisdwiantara12/SanepoUnitCheck/main/releases/SanepoUnitCheck-v1.3.2.apk",
+            updateFrom131.apkDownloadUrl
+        )
+        assertEquals(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            updateFrom131.expectedSha256
+        )
+        assertTrue(updateFrom131.updateAvailable)
+
+        val sameVersion = requireNotNull(
+            AppUpdateManager.parseRawManifestJson(sampleJson, "1.3.2")
+        )
+        assertFalse(sameVersion.updateAvailable)
+        assertTrue(AppUpdateManager.parseRawManifestJson("{}", "1.3.1") == null)
+    }
 }

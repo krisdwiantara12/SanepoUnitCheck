@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="12dp"
     android:orientation="vertical">
 
-    <!-- High-Risk Security Alert Banner (KnoxGuard / MDM / Finance / Fake Spec) -->
+    <!-- High-Risk Security Alert Banner -->
     <TextView
         android:id="@+id/tvSecurityAlertBanner"
         style="@style/TechValueMono"
@@ -47,7 +48,11 @@
                 style="@style/TechValueMono"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:background="@drawable/bg_icon_well"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp"
                 android:textColor="@color/accent_amber_text"
+                android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -57,7 +62,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:textColor="@color/text_secondary" />
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
 
         <ProgressBar
             android:id="@+id/progressScan"
@@ -80,9 +86,15 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_primary"
+                android:drawablePadding="8dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
                 android:textColor="@color/text_on_accent"
-                android:textStyle="bold" />
+                android:textSize="13sp"
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_scan_radar"
+                app:drawableTint="@color/text_on_accent" />
 
             <Button
                 android:id="@+id/btnFullSpecs"
@@ -90,9 +102,14 @@
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_btn_secondary"
+                android:drawablePadding="6dp"
                 android:focusable="true"
-                android:paddingHorizontal="14dp"
-                android:textColor="@color/text_primary" />
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp"
+                app:drawableStartCompat="@drawable/ic_specs_chip"
+                app:drawableTint="@color/text_secondary" />
         </LinearLayout>
 
         <LinearLayout
@@ -107,22 +124,28 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_secondary"
+                android:drawablePadding="8dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
                 android:textColor="@color/accent_amber_text"
                 android:textSize="12sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_cod_timer"
+                app:drawableTint="@color/accent_amber_text" />
 
-            <Button
+            <ImageButton
                 android:id="@+id/btnResetSession"
-                android:layout_width="wrap_content"
+                android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_btn_secondary"
+                android:contentDescription="Reset Inspection Session"
                 android:focusable="true"
-                android:paddingHorizontal="14dp"
-                android:textColor="@color/status_fail_fg"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:padding="13dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_reset_bin"
+                app:tint="@color/status_fail_fg" />
         </LinearLayout>
     </LinearLayout>
 
@@ -139,7 +162,11 @@
             android:id="@+id/tvIdentityHeader"
             style="@style/TechSectionHeader"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:drawablePadding="6dp"
+            android:gravity="center_vertical"
+            app:drawableStartCompat="@drawable/ic_specs_chip"
+            app:drawableTint="@color/accent_amber_text" />
 
         <TextView
             android:id="@+id/tvIdentityBody"

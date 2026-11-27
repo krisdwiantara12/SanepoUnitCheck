@@ -100,7 +100,7 @@ class AudioTestActivity : AppCompatActivity() {
             binding.tvWizardStep.text = CodWizardFlow.stepLabel(this)
         }
 
-        binding.btnBackAudio.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackAudio.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvAudioTitle.text = Lang.t(this, "Audio Stereo, Dual-Mic & Haptics", "Stereo Audio, Dual-Mic & Haptics")
         binding.tvAudioStatus.text = Lang.t(
             this,

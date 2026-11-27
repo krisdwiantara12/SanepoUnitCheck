@@ -66,7 +66,7 @@ class AboutActivity : AppCompatActivity() {
         val sigSha256 = AppUpdateManager.readApkSigningSha256(this)
         val abis = Build.SUPPORTED_ABIS.joinToString(", ")
 
-        binding.btnBackAbout.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackAbout.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvAboutTitle.text = Lang.t(this, "Tentang, Update & Info Teknis", "About, Updates & Tech Info")
         binding.tvVersionBadge.text = "v${BuildConfig.VERSION_NAME} (Code ${BuildConfig.VERSION_CODE}) | API 23..37"
 
@@ -85,8 +85,8 @@ class AboutActivity : AppCompatActivity() {
         binding.tvUpdateHeader.text = Lang.t(this, "SETTINGAN CEK UPDATE & OTA GITHUB", "UPDATE SETTINGS & DIRECT IN-APP OTA")
         binding.cbAutoCheckUpdate.text = Lang.t(
             this,
-            "Otomatis cek update saat buka aplikasi (maks 1x per 12 jam)",
-            "Auto-check for updates on app launch (throttled once per 12h)"
+            "Otomatis cek update saat buka aplikasi (maks 1x per 6 jam)",
+            "Auto-check for updates on app launch (once per 6h)"
         )
         binding.cbIncludePreRelease.text = Lang.t(
             this,

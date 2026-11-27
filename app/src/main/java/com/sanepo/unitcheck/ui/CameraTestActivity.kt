@@ -104,10 +104,10 @@ class CameraTestActivity : AppCompatActivity() {
             binding.tvWizardStep.text = CodWizardFlow.stepLabel(this)
         }
 
-        binding.btnBackCamera.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackCamera.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvCameraTitle.text = Lang.t(this, "Kamera, Jamur & Fokus", "Camera, Spot & AF")
-        binding.btnSpotCheckGuide.text = Lang.t(this, "CEK JAMUR", "SPOT/AF")
-        binding.btnTorchToggle.text = "TORCH OFF"
+        binding.btnSpotCheckGuide.text = Lang.t(this, "JAMUR", "SPOT")
+        binding.btnTorchToggle.text = "TORCH"
         binding.btnCameraPass.text = Lang.t(this, "KAMERA PASS", "CAMERA PASS")
         binding.btnCameraFail.text = Lang.t(this, "KAMERA FAIL", "CAMERA FAIL")
         binding.tvSpotCheckBanner.text = Lang.t(
@@ -284,7 +284,7 @@ class CameraTestActivity : AppCompatActivity() {
     private fun resetTorchOnSwitch() {
         if (torchEnabled) {
             torchEnabled = false
-            binding.btnTorchToggle.text = "TORCH OFF"
+            binding.btnTorchToggle.text = "TORCH"
             lenses.firstOrNull { it.flashSupported }?.let {
                 CameraEnumerator.setTorch(this, it.cameraId, false)
             }
@@ -629,7 +629,7 @@ class CameraTestActivity : AppCompatActivity() {
             return
         }
         torchEnabled = !torchEnabled
-        binding.btnTorchToggle.text = if (torchEnabled) "TORCH ON" else "TORCH OFF"
+        binding.btnTorchToggle.text = if (torchEnabled) "ON" else "TORCH"
         val builder = previewBuilder
         val session = captureSession
         if (builder != null && session != null && lens != null && lens.flashSupported) {

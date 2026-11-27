@@ -79,7 +79,7 @@ class CodPreBuyActivity : AppCompatActivity() {
 
         val oemProfile = OemDeviceHelper.buildProfile()
 
-        binding.btnBackCod.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackCod.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvCodTitle.text = Lang.t(this, "Checklist Kilat COD & Cek IMEI", "Rapid COD Check & OEM IMEI")
         binding.tvCodAutoHeader.text = Lang.t(this, "VERIFIKASI KEAMANAN & LEGALITAS OTOMATIS", "AUTO LEGAL & SECURITY CHECK")
         binding.tvOemImeiHeader.text = Lang.t(
@@ -91,10 +91,10 @@ class CodPreBuyActivity : AppCompatActivity() {
             appendLine("${oemProfile.displayBrandLabel} | ${oemProfile.osFlavorLabel}")
             append(Lang.t(this@CodPreBuyActivity, oemProfile.imeiSettingsPathId, oemProfile.imeiSettingsPathEn))
         }
-        binding.btnCodImeiSettings.text = Lang.t(this, "IMEI DI PENGATURAN", "IMEI IN SETTINGS")
-        binding.btnCodDialImei.text = "DIAL *#06 (+#)"
-        binding.btnCodScanBarcode.text = Lang.t(this, "SCAN BARCODE DUS", "SCAN BOX BARCODE")
-        binding.btnCodOemQcCode.text = Lang.t(this, "MENU QC ${oemProfile.primaryQcCode}", "OEM QC ${oemProfile.primaryQcCode}")
+        binding.btnCodImeiSettings.text = Lang.t(this, "PENGATURAN IMEI", "IMEI SETTINGS")
+        binding.btnCodDialImei.text = "DIAL *#06"
+        binding.btnCodScanBarcode.text = Lang.t(this, "SCAN DUS", "SCAN BOX")
+        binding.btnCodOemQcCode.text = "QC ${oemProfile.primaryQcCode}"
 
         binding.btnCodOpenAccounts.text = Lang.t(this, "CEK AKUN / SYNC", "CHECK ACCOUNTS")
         binding.btnCodOpenSecurity.text = Lang.t(this, "KUNCI LAYAR", "SCREEN LOCK")

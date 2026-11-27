@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootMain"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -16,9 +17,16 @@
         android:paddingHorizontal="12dp"
         android:paddingVertical="10dp">
 
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_sanepo_mark" />
+
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -36,47 +44,47 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:maxLines="2"
+                android:maxLines="1"
                 android:textColor="@color/text_muted"
                 android:textSize="11sp" />
         </LinearLayout>
 
         <Button
             android:id="@+id/btnLangToggle"
-            android:layout_width="wrap_content"
+            android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="@drawable/bg_btn_secondary"
             android:focusable="true"
-            android:minWidth="46dp"
-            android:paddingHorizontal="8dp"
+            android:padding="0dp"
             android:textColor="@color/text_primary"
             android:textSize="11sp"
             android:textStyle="bold" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnOpenAbout"
-            android:layout_width="wrap_content"
+            android:layout_width="44dp"
             android:layout_height="44dp"
             android:layout_marginStart="6dp"
             android:background="@drawable/bg_btn_secondary"
+            android:contentDescription="About &amp; Update Settings"
             android:focusable="true"
-            android:minWidth="52dp"
-            android:paddingHorizontal="8dp"
-            android:textColor="@color/text_primary"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:padding="11dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_about_info"
+            app:tint="@color/text_primary" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnOpenReport"
-            android:layout_width="wrap_content"
+            android:layout_width="44dp"
             android:layout_height="44dp"
             android:layout_marginStart="6dp"
             android:background="@drawable/bg_btn_secondary"
+            android:contentDescription="Technician Report &amp; Export"
             android:focusable="true"
-            android:paddingHorizontal="10dp"
-            android:textColor="@color/accent_amber_text"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:padding="11dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_report_doc"
+            app:tint="@color/accent_amber_text" />
     </LinearLayout>
 
     <View
@@ -91,6 +99,7 @@
         android:layout_height="wrap_content"
         android:background="@drawable/bg_badge_pass"
         android:clickable="true"
+        android:drawablePadding="8dp"
         android:focusable="true"
         android:gravity="center_vertical"
         android:minHeight="44dp"
@@ -99,7 +108,9 @@
         android:textColor="@color/status_pass_fg"
         android:textSize="12sp"
         android:textStyle="bold"
-        android:visibility="gone" />
+        android:visibility="gone"
+        app:drawableStartCompat="@drawable/ic_cloud_update"
+        app:drawableTint="@color/status_pass_fg" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerDashboard"

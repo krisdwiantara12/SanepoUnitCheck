@@ -143,13 +143,13 @@ class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
             binding.tvWizardStep.text = CodWizardFlow.stepLabel(this)
         }
 
-        binding.btnBackConn.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackConn.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvConnTitle.text = Lang.t(this, "RF, Dual-SIM, Data & GPS", "RF, Dual-SIM, Data & GPS")
         binding.btnReqRfPerms.text = Lang.t(this, "IZINKAN & SCAN RF/GPS", "GRANT PERMS & SCAN RF/GPS")
         binding.btnRefreshRf.text = Lang.t(this, "SEGARKAN", "REFRESH")
         binding.tvConnCellHeader.text = Lang.t(this, "BASEBAND, DUAL-SIM PER-SLOT & DATA", "BASEBAND, PER-SLOT SIM & DATA")
-        binding.btnTestCellData.text = Lang.t(this, "TES DATA SELULER (3s)", "TEST CELLULAR DATA (3s)")
-        binding.btnTestOperatorCall.text = Lang.t(this, "PINTASAN CEK TELEPON", "DIAL CARRIER CALL")
+        binding.btnTestCellData.text = Lang.t(this, "DATA SIM 3s", "CELL DATA 3s")
+        binding.btnTestOperatorCall.text = Lang.t(this, "TES TELEPON", "CALL TEST")
         binding.tvConnWifiBtHeader.text = Lang.t(this, "WI-FI BAND & BLUETOOTH", "WI-FI BANDS & BLUETOOTH")
         binding.tvConnNfcGnssHeader.text = Lang.t(this, "NFC & SATELIT GPS/GNSS", "NFC & GNSS SATELLITES")
         binding.btnConnPass.text = Lang.t(this, "KONEKTIVITAS PASS", "RF / GPS PASS")

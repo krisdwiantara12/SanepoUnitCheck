@@ -74,15 +74,15 @@ class ReportActivity : AppCompatActivity() {
             binding.tvWizardStep.text = "${CodWizardFlow.stepLabel(this)} - ${Lang.t(this, "SELESAI! TINJAU & EKSPOR", "COMPLETE! REVIEW & EXPORT")}"
         }
 
-        binding.btnBackReport.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackReport.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvReportTitle.text = Lang.t(this, "Laporan Teknisi & Ekspor", "Technician Report & Export")
         binding.tvMetaHeader.text = Lang.t(this, "CATATAN TRANSAKSI / IMEI (OPSIONAL)", "TRANSACTION & IMEI NOTES (OPTIONAL)")
-        binding.btnDialImei.text = "IMEI / SCAN"
-        binding.btnCopyTextReport.text = Lang.t(this, "SALIN TEKS", "COPY TEXT")
-        binding.btnExportJson.text = "SHARE JSON"
-        binding.btnExportPdf.text = "EXPORT PDF"
-        binding.btnShowQr.text = Lang.t(this, "QR VERIFIKASI", "VERIFY QR")
-        binding.btnShareCardPng.text = Lang.t(this, "SHARE KARTU PNG", "SHARE CARD PNG")
+        binding.btnDialImei.text = "IMEI"
+        binding.btnCopyTextReport.text = Lang.t(this, "SALIN", "COPY")
+        binding.btnExportJson.text = "JSON"
+        binding.btnExportPdf.text = "PDF"
+        binding.btnShowQr.text = "QR VERIFY"
+        binding.btnShareCardPng.text = Lang.t(this, "KARTU PNG", "CARD PNG")
 
         suppressWatcher = true
         binding.etSellerInfo.setText(DiagnosticStore.sellerInfo)

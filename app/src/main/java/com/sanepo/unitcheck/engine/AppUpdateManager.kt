@@ -29,13 +29,14 @@ object AppUpdateManager {
     const val RELEASES_PAGE_URL = "$REPO_URL/releases"
     private const val LATEST_RELEASE_API = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
     private const val ALL_RELEASES_API = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases?per_page=5"
+    private const val RAW_LATEST_JSON_URL = "https://raw.githubusercontent.com/$GITHUB_OWNER/$GITHUB_REPO/main/releases/latest.json"
 
     private const val PREF_UPDATE = "sanepo_update_prefs"
     private const val KEY_AUTO_CHECK = "auto_check_on_launch"
     private const val KEY_INCLUDE_BETA = "include_pre_releases"
     private const val KEY_LAST_CHECK_MS = "last_check_ms"
     private const val KEY_CACHED_TAG = "cached_latest_tag"
-    private const val AUTO_CHECK_INTERVAL_MS = 12L * 60L * 60L * 1000L
+    private const val AUTO_CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L
 
     data class ReleaseInfo(
         val tagName: String,
@@ -64,7 +65,7 @@ object AppUpdateManager {
 
     fun isAutoCheckOnLaunch(context: Context): Boolean {
         return context.getSharedPreferences(PREF_UPDATE, Context.MODE_PRIVATE)
-            .getBoolean(KEY_AUTO_CHECK, false)
+            .getBoolean(KEY_AUTO_CHECK, true)
     }
 
     fun setAutoCheckOnLaunch(context: Context, enabled: Boolean) {
@@ -242,6 +243,52 @@ object AppUpdateManager {
         return if (m.find()) m.group(1) else null
     }
 
+    fun parseRawManifestJson(rawJson: String, currentVersion: String): ReleaseInfo? {
+        return try {
+            val obj = JSONObject(rawJson)
+            val tagName = obj.optString("tagName").trim()
+            val url = obj.optString("apkDownloadUrl").trim()
+            if (tagName.isEmpty() || url.isEmpty()) return null
+            val releaseName = obj.optString("releaseName").ifBlank { tagName }
+            val body = obj.optString("body").orEmpty()
+            val publishedAt = obj.optString("publishedAt").orEmpty()
+            val htmlUrl = obj.optString("htmlUrl").ifBlank { RELEASES_PAGE_URL }
+            val isPre = obj.optBoolean("isPreRelease", false)
+            val assetName = obj.optString("apkAssetName").ifBlank { "SanepoUnitCheck-$tagName.apk" }
+            val sizeBytes = obj.optLong("apkSizeBytes", 0L)
+            val sha = obj.optString("expectedSha256").trim().takeIf { it.length == 64 }
+            ReleaseInfo(
+                tagName = tagName,
+                releaseName = releaseName,
+                body = body,
+                publishedAt = publishedAt,
+                htmlUrl = htmlUrl,
+                isPreRelease = isPre,
+                apkAssetName = assetName,
+                apkDownloadUrl = url,
+                apkSizeBytes = sizeBytes,
+                expectedSha256 = sha,
+                updateAvailable = isRemoteNewer(currentVersion, tagName)
+            )
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun checkRawFallback(currentVersion: String): ReleaseInfo? {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = openHttpConnection(RAW_LATEST_JSON_URL, isJsonApi = false)
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) return null
+            val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            parseRawManifestJson(text, currentVersion)
+        } catch (_: Throwable) {
+            null
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
     fun checkForUpdate(context: Context, includePreReleases: Boolean): CheckOutcome {
         if (!hasNetworkConnection(context)) {
             return CheckOutcome.Error("Tidak ada koneksi internet aktif. Cek Wi-Fi atau data seluler.")
@@ -252,10 +299,6 @@ object AppUpdateManager {
             conn = openHttpConnection(urlStr, isJsonApi = true)
             val code = conn.responseCode
             val nowMs = System.currentTimeMillis()
-            context.getSharedPreferences(PREF_UPDATE, Context.MODE_PRIVATE)
-                .edit()
-                .putLong(KEY_LAST_CHECK_MS, nowMs)
-                .apply()
 
             when (code) {
                 HttpURLConnection.HTTP_OK -> {
@@ -265,33 +308,70 @@ object AppUpdateManager {
                         isArrayPayload = includePreReleases,
                         currentVersion = BuildConfig.VERSION_NAME
                     )
-                    if (parsed == null) {
-                        CheckOutcome.NoReleasePublished(
-                            nowMs,
-                            "Belum ada GitHub Release publik pada $GITHUB_OWNER/$GITHUB_REPO."
-                        )
-                    } else {
-                        context.getSharedPreferences(PREF_UPDATE, Context.MODE_PRIVATE)
-                            .edit()
-                            .putString(KEY_CACHED_TAG, parsed.tagName)
-                            .apply()
+                    if (parsed != null && !parsed.apkDownloadUrl.isNullOrBlank()) {
+                        saveSuccessfulCheckMeta(context, nowMs, parsed.tagName)
                         CheckOutcome.Success(parsed, nowMs)
+                    } else {
+                        val rawRel = checkRawFallback(BuildConfig.VERSION_NAME)
+                        if (rawRel != null && (parsed == null || parsed.tagName.isBlank() || !isRemoteNewer(rawRel.tagName, parsed.tagName))) {
+                            saveSuccessfulCheckMeta(context, nowMs, rawRel.tagName)
+                            CheckOutcome.Success(rawRel, nowMs)
+                        } else if (parsed != null) {
+                            saveSuccessfulCheckMeta(context, nowMs, parsed.tagName)
+                            CheckOutcome.Success(parsed, nowMs)
+                        } else {
+                            CheckOutcome.NoReleasePublished(
+                                nowMs,
+                                "Belum ada GitHub Release publik pada $GITHUB_OWNER/$GITHUB_REPO."
+                            )
+                        }
                     }
                 }
-                HttpURLConnection.HTTP_NOT_FOUND -> CheckOutcome.NoReleasePublished(
-                    nowMs,
-                    "Belum ada rilis APK di GitHub ($GITHUB_OWNER/$GITHUB_REPO/releases)."
-                )
-                HttpURLConnection.HTTP_FORBIDDEN, 429 -> CheckOutcome.Error(
-                    "GitHub API rate limit (HTTP $code). Coba beberapa menit lagi atau buka halaman Releases."
-                )
+                HttpURLConnection.HTTP_NOT_FOUND -> {
+                    val rawRel = checkRawFallback(BuildConfig.VERSION_NAME)
+                    if (rawRel != null) {
+                        saveSuccessfulCheckMeta(context, nowMs, rawRel.tagName)
+                        CheckOutcome.Success(rawRel, nowMs)
+                    } else {
+                        CheckOutcome.NoReleasePublished(
+                            nowMs,
+                            "Belum ada rilis APK di GitHub ($GITHUB_OWNER/$GITHUB_REPO/releases)."
+                        )
+                    }
+                }
+                HttpURLConnection.HTTP_FORBIDDEN, 429 -> {
+                    val rawRel = checkRawFallback(BuildConfig.VERSION_NAME)
+                    if (rawRel != null) {
+                        saveSuccessfulCheckMeta(context, nowMs, rawRel.tagName)
+                        CheckOutcome.Success(rawRel, nowMs)
+                    } else {
+                        CheckOutcome.Error(
+                            "GitHub API rate limit (HTTP $code). Coba beberapa menit lagi atau buka halaman Releases."
+                        )
+                    }
+                }
                 else -> CheckOutcome.Error("GitHub API merespons HTTP $code.")
             }
         } catch (t: Throwable) {
-            CheckOutcome.Error("Gagal menghubungi GitHub: ${t.message ?: t.javaClass.simpleName}")
+            val rawRel = checkRawFallback(BuildConfig.VERSION_NAME)
+            if (rawRel != null) {
+                val nowMs = System.currentTimeMillis()
+                saveSuccessfulCheckMeta(context, nowMs, rawRel.tagName)
+                CheckOutcome.Success(rawRel, nowMs)
+            } else {
+                CheckOutcome.Error("Gagal menghubungi GitHub: ${t.message ?: t.javaClass.simpleName}")
+            }
         } finally {
             conn?.disconnect()
         }
+    }
+
+    private fun saveSuccessfulCheckMeta(context: Context, nowMs: Long, tagName: String) {
+        context.getSharedPreferences(PREF_UPDATE, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_LAST_CHECK_MS, nowMs)
+            .putString(KEY_CACHED_TAG, tagName)
+            .apply()
     }
 
     fun downloadUpdateApk(

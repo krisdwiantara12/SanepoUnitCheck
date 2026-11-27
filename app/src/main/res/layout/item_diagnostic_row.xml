@@ -7,13 +7,25 @@
     android:background="@drawable/bg_card_sharp"
     android:clickable="true"
     android:focusable="true"
+    android:gravity="center_vertical"
     android:minHeight="68dp"
     android:orientation="horizontal"
     android:padding="12dp">
 
+    <ImageView
+        android:id="@+id/ivRowIcon"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/bg_icon_well"
+        android:contentDescription="@null"
+        android:padding="9dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_shield_check" />
+
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
@@ -30,6 +42,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
+            android:maxLines="2"
+            android:ellipsize="end"
             android:textColor="@color/text_muted"
             android:textSize="12sp" />
 
@@ -38,24 +52,42 @@
             style="@style/TechValueMono"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
+            android:layout_marginTop="4dp"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp"
+            android:textSize="11sp"
             android:visibility="gone" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tvRowBadge"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical"
         android:layout_marginStart="10dp"
-        android:fontFamily="monospace"
-        android:gravity="center"
-        android:minWidth="64dp"
-        android:paddingHorizontal="8dp"
-        android:paddingVertical="5dp"
-        android:textSize="11sp"
-        android:textStyle="bold" />
+        android:gravity="end"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvRowBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:minWidth="60dp"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="5dp"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvRowAutoTag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:fontFamily="monospace"
+            android:text="AUTO"
+            android:textColor="@color/text_muted"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
 
 </LinearLayout>

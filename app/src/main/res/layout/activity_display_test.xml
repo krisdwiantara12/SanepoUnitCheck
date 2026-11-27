@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootDisplayTest"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -92,9 +93,14 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_badge_pass"
+                android:drawablePadding="6dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
                 android:textColor="@color/status_pass_fg"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_check_mark"
+                app:drawableTint="@color/status_pass_fg" />
 
             <Button
                 android:id="@+id/btnDisplayFail"
@@ -103,9 +109,14 @@
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_badge_fail"
+                android:drawablePadding="6dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
                 android:textColor="@color/status_fail_fg"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_cross_mark"
+                app:drawableTint="@color/status_fail_fg" />
         </LinearLayout>
     </LinearLayout>
 

@@ -63,7 +63,7 @@ class BatteryDetailActivity : AppCompatActivity() {
             binding.tvWizardStep.text = CodWizardFlow.stepLabel(this)
         }
 
-        binding.btnBackBattery.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackBattery.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvBatteryTitle.text = Lang.t(this, "Diagnostik Baterai & Arus Cas", "Battery & Charging Circuit")
         binding.tvGraphHeader.text = Lang.t(this, "GRAFIK STABILITAS ARUS (30 SAMPEL LIVE)", "LIVE CURRENT STABILITY GRAPH (30 SAMPLES)")
         binding.tvStressHeader.text = Lang.t(this, "45-DETIK STRESS TEST (DETEKSI BATERAI DROP / BOCOR)", "45-SECOND VOLTAGE SAG STRESS TEST")

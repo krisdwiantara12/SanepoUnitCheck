@@ -98,9 +98,9 @@ class ImeiScannerActivity : AppCompatActivity() {
             insets
         }
 
-        binding.btnBackScanner.text = Lang.t(this, "BATAL", "CANCEL")
+        binding.btnBackScanner.contentDescription = Lang.t(this, "Batal", "Cancel")
         binding.tvScannerTitle.text = Lang.t(this, "Scan Barcode IMEI Dus / Layar", "Scan IMEI Box / Screen Barcode")
-        binding.btnScannerTorch.text = "FLASH OFF"
+        binding.btnScannerTorch.text = "FLASH"
         binding.tvScannerStatus.text = Lang.t(
             this,
             "Arahkan kamera ke stiker barcode IMEI di dus atau popup *#06# HP lain.",
@@ -291,7 +291,7 @@ class ImeiScannerActivity : AppCompatActivity() {
         val builder = previewBuilder ?: return
         val session = captureSession ?: return
         torchOn = !torchOn
-        binding.btnScannerTorch.text = if (torchOn) "FLASH ON" else "FLASH OFF"
+        binding.btnScannerTorch.text = if (torchOn) "ON" else "FLASH"
         try {
             builder.set(
                 CaptureRequest.FLASH_MODE,

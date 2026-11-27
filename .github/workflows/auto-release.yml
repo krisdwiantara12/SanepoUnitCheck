@@ -1,0 +1,70 @@
+name: Auto Publish Sanepo APK Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "releases/**"
+      - "app/build.gradle.kts"
+      - ".github/workflows/auto-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version and release APK asset
+        id: meta
+        run: |
+          VERSION=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+          TAG="v${VERSION}"
+          APK_FILE=$(ls releases/SanepoUnitCheck-${TAG}.apk 2>/dev/null || ls releases/*.apk 2>/dev/null | head -n 1 || true)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "apk=$APK_FILE" >> "$GITHUB_OUTPUT"
+          if [ -z "$APK_FILE" ]; then
+            echo "No APK asset found under releases/. Skipping GitHub Release creation."
+            exit 0
+          fi
+          SHA=$(sha256sum "$APK_FILE" | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing GitHub Release
+        id: check_rel
+        if: steps.meta.outputs.apk != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ steps.meta.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release automatically
+        if: steps.meta.outputs.apk != '' && steps.check_rel.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          APK="${{ steps.meta.outputs.apk }}"
+          SHA="${{ steps.meta.outputs.sha256 }}"
+          NOTES_OUT="/tmp/sanepo_release_notes.txt"
+          if [ -f "releases/release-notes.md" ]; then
+            cat "releases/release-notes.md" > "$NOTES_OUT"
+          else
+            printf "Sanepo Unit Check %s\n" "$TAG" > "$NOTES_OUT"
+          fi
+          printf "\n\nSHA256: %s\n" "$SHA" >> "$NOTES_OUT"
+          gh release create "$TAG" "$APK" \
+            --target "${{ github.sha }}" \
+            --title "Sanepo Unit Check ${TAG}" \
+            --notes-file "$NOTES_OUT" \
+            --latest

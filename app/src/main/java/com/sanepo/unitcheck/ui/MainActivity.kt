@@ -106,12 +106,12 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
     private fun refreshTopChrome() {
         binding.tvAppSubtitle.text = Lang.t(
             this,
-            "Diagnostik Unit & Inspeksi Hardware Offline",
-            "Offline Technician Unit & Hardware Inspector"
+            "Diagnostik Unit & Inspeksi Hardware",
+            "Offline Hardware & Unit Inspector"
         )
         binding.btnLangToggle.text = if (Lang.isIndonesian(this)) "ID" else "EN"
-        binding.btnOpenAbout.text = "ABOUT"
-        binding.btnOpenReport.text = Lang.t(this, "LAPORAN", "REPORT")
+        binding.btnOpenAbout.contentDescription = Lang.t(this, "Tentang & Cek Update", "About & Updates")
+        binding.btnOpenReport.contentDescription = Lang.t(this, "Laporan & Ekspor", "Report & Export")
     }
 
     private fun rebuildDashboardRows() {

@@ -72,7 +72,7 @@ class ButtonPortTestActivity : AppCompatActivity() {
             binding.tvWizardStep.text = CodWizardFlow.stepLabel(this)
         }
 
-        binding.btnBackKeys.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackKeys.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvKeysTitle.text = Lang.t(this, "Tombol Fisik, Trigger & Port", "Buttons, Triggers & Ports")
         binding.tvKeysHint.text = Lang.t(
             this,

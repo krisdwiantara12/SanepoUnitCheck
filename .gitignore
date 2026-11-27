@@ -19,8 +19,9 @@ local.properties
 *.jks
 *.keystore
 
-# Compiled binaries (distribute APKs via GitHub Releases)
+# Compiled binaries (only the active release APK under releases/ is tracked for 1-click push auto-release)
 *.apk
+!releases/*.apk
 *.ap_
 *.aab
 *.dex

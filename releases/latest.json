@@ -1,0 +1,12 @@
+{
+  "tagName": "v1.3.2",
+  "releaseName": "Sanepo Unit Check v1.3.2",
+  "body": "v1.3.2: Otomatisasi GitHub Release OTA + fallback manifest + auto-cek update 6 jam.\nv1.3.1: Ikon vektor presisi untuk UI instrumen teknisi.\nv1.3.0: Fix mic loopback, cek IMEI/QC per merk + scan barcode, COD Checklist & Express 90s Wizard, uji LCD KW, barometer IP68 bersyarat, kamera AF/spot, dan Dual-SIM data ping.",
+  "publishedAt": "2026-11-27T07:42:00Z",
+  "htmlUrl": "https://github.com/krisdwiantara12/SanepoUnitCheck/releases",
+  "isPreRelease": false,
+  "apkAssetName": "SanepoUnitCheck-v1.3.2.apk",
+  "apkDownloadUrl": "https://raw.githubusercontent.com/krisdwiantara12/SanepoUnitCheck/main/releases/SanepoUnitCheck-v1.3.2.apk",
+  "apkSizeBytes": 1339855,
+  "expectedSha256": "16ace96b8c2df828d2859e66fa6f22fc3d1af8c6c3c1f4e5ae830f29ae63862b"
+}

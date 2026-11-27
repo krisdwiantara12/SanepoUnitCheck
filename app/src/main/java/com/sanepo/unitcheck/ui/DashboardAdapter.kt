@@ -1,13 +1,17 @@
 package com.sanepo.unitcheck.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.core.widget.ImageViewCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.sanepo.unitcheck.BuildConfig
 import com.sanepo.unitcheck.R
@@ -82,7 +86,7 @@ class DashboardAdapter(
         private val btnScan: Button = view.findViewById(R.id.btnRunAutoScan)
         private val btnSpecs: Button = view.findViewById(R.id.btnFullSpecs)
         private val btnCodWizard: Button = view.findViewById(R.id.btnCodWizard)
-        private val btnResetSession: Button = view.findViewById(R.id.btnResetSession)
+        private val btnResetSession: ImageButton = view.findViewById(R.id.btnResetSession)
         private val tvIdHeader: TextView = view.findViewById(R.id.tvIdentityHeader)
         private val tvIdBody: TextView = view.findViewById(R.id.tvIdentityBody)
 
@@ -143,18 +147,18 @@ class DashboardAdapter(
             btnScan.text = if (isScanning) {
                 Lang.t(context, "MEMINDAI...", "SCANNING...")
             } else {
-                Lang.t(context, "JALANKAN AUTO-SCAN", "RUN AUTO-SCAN")
+                Lang.t(context, "AUTO-SCAN", "AUTO-SCAN")
             }
             btnScan.isEnabled = !isScanning
             btnScan.setOnClickListener { onRunAutoScan() }
 
-            btnSpecs.text = Lang.t(context, "SPEK DETAIL", "FULL SPECS")
+            btnSpecs.text = Lang.t(context, "SPEK", "SPECS")
             btnSpecs.setOnClickListener { onShowFullSpecs() }
 
-            btnCodWizard.text = Lang.t(context, "MODE KILAT COD 90s / WIZARD", "QUICK COD 90s / WIZARD")
+            btnCodWizard.text = Lang.t(context, "MODE KILAT COD 90s", "QUICK COD 90s")
             btnCodWizard.setOnClickListener { onStartCodWizard() }
 
-            btnResetSession.text = Lang.t(context, "RESET SESI", "RESET SESSION")
+            btnResetSession.contentDescription = Lang.t(context, "Reset Sesi Inspeksi", "Reset Inspection Session")
             btnResetSession.setOnClickListener { onResetSession() }
 
             tvIdHeader.text = Lang.t(context, "IDENTITAS HARDWARE & KEAMANAN", "HARDWARE & SECURITY IDENTITY")
@@ -184,15 +188,29 @@ class DashboardAdapter(
 
     inner class TestVH(view: View) : RecyclerView.ViewHolder(view) {
         private val root: View = view.findViewById(R.id.rowRoot)
+        private val ivIcon: ImageView = view.findViewById(R.id.ivRowIcon)
         private val tvTitle: TextView = view.findViewById(R.id.tvRowTitle)
         private val tvSub: TextView = view.findViewById(R.id.tvRowSubtitle)
         private val tvSummary: TextView = view.findViewById(R.id.tvRowSummary)
         private val tvBadge: TextView = view.findViewById(R.id.tvRowBadge)
+        private val tvAutoTag: TextView = view.findViewById(R.id.tvRowAutoTag)
 
         fun bind(item: DiagnosticItem) {
-            val autoTag = if (item.isAutomated) " [AUTO]" else ""
-            tvTitle.text = Lang.t(context, item.titleId, item.titleEn) + autoTag
+            ivIcon.setImageResource(iconForModule(item.id))
+            val iconColorRes = when (item.status) {
+                TestStatus.PASS -> R.color.status_pass_fg
+                TestStatus.WARN -> R.color.status_warn_fg
+                TestStatus.FAIL -> R.color.status_fail_fg
+                else -> R.color.text_secondary
+            }
+            ImageViewCompat.setImageTintList(
+                ivIcon,
+                ColorStateList.valueOf(ContextCompat.getColor(context, iconColorRes))
+            )
+
+            tvTitle.text = Lang.t(context, item.titleId, item.titleEn)
             tvSub.text = Lang.t(context, item.subtitleId, item.subtitleEn)
+            tvAutoTag.visibility = if (item.isAutomated) View.VISIBLE else View.GONE
 
             if (item.summary.isNotBlank()) {
                 tvSummary.visibility = View.VISIBLE
@@ -222,6 +240,23 @@ class DashboardAdapter(
             }
             root.setOnClickListener { onItemClick(item) }
         }
+
+        private fun iconForModule(id: String): Int {
+            return when (id) {
+                "system_tamper" -> R.drawable.ic_shield_check
+                "storage_benchmark" -> R.drawable.ic_storage_chip
+                "display_pixels" -> R.drawable.ic_display_panel
+                "touch_digitizer" -> R.drawable.ic_touch_grid
+                "battery_charging" -> R.drawable.ic_battery_bolt
+                "audio_haptics" -> R.drawable.ic_audio_wave
+                "camera_lenses" -> R.drawable.ic_camera_lens
+                "sensors_biometrics" -> R.drawable.ic_sensor_gyro
+                "connectivity_rf" -> R.drawable.ic_signal_rf
+                "buttons_ports" -> R.drawable.ic_keys_port
+                "pre_buy_safety" -> R.drawable.ic_checklist_cod
+                else -> R.drawable.ic_specs_chip
+            }
+        }
     }
 
     inner class FooterVH(view: View) : RecyclerView.ViewHolder(view) {
@@ -232,8 +267,8 @@ class DashboardAdapter(
         fun bind() {
             btnAbout.text = Lang.t(
                 context,
-                "ABOUT, SETTINGAN & CEK UPDATE (v${BuildConfig.VERSION_NAME})",
-                "ABOUT, UPDATE SETTINGS & INFO (v${BuildConfig.VERSION_NAME})"
+                "ABOUT & CEK UPDATE (v${BuildConfig.VERSION_NAME})",
+                "ABOUT & CHECK UPDATES (v${BuildConfig.VERSION_NAME})"
             )
             btnAbout.setOnClickListener { onOpenAbout() }
             tvDevs.text = "Developers: Kris Dwi Antara • Sanepo Team"
@@ -241,3 +276,4 @@ class DashboardAdapter(
         }
     }
 }
+

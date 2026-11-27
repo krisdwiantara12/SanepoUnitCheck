@@ -13,8 +13,8 @@ android {
         applicationId = "com.sanepo.unitcheck"
         minSdk = 23
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 6
+        versionName = "1.3.2"
     }
 
     buildTypes {
@@ -22,6 +22,10 @@ android {
             isMinifyEnabled = false
         }
         release {
+            val localDebugKs = file("${System.getProperty("user.home")}/.android/debug.keystore")
+            if (localDebugKs.exists()) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -55,4 +59,5 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("com.google.zxing:core:3.5.4")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

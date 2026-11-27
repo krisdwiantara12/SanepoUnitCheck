@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootCodPreBuy"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -31,14 +32,17 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
+            <ImageButton
                 android:id="@+id/btnBackCod"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="@drawable/bg_btn_secondary"
+                android:contentDescription="Back"
                 android:focusable="true"
-                android:paddingHorizontal="14dp"
-                android:textColor="@color/text_primary" />
+                android:padding="11dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_back"
+                app:tint="@color/text_primary" />
 
             <TextView
                 android:id="@+id/tvCodTitle"
@@ -105,10 +109,15 @@
                     android:layout_height="48dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_primary"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
+                    android:gravity="center"
+                    android:paddingHorizontal="10dp"
                     android:textColor="@color/text_on_accent"
                     android:textSize="11sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    app:drawableStartCompat="@drawable/ic_settings_gear"
+                    app:drawableTint="@color/text_on_accent" />
 
                 <Button
                     android:id="@+id/btnCodDialImei"
@@ -117,10 +126,15 @@
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
+                    android:gravity="center"
+                    android:paddingHorizontal="10dp"
                     android:textColor="@color/accent_amber_text"
                     android:textSize="11sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    app:drawableStartCompat="@drawable/ic_dialer_pad"
+                    app:drawableTint="@color/accent_amber_text" />
             </LinearLayout>
 
             <LinearLayout
@@ -135,10 +149,15 @@
                     android:layout_height="48dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
+                    android:gravity="center"
+                    android:paddingHorizontal="10dp"
                     android:textColor="@color/text_primary"
                     android:textSize="11sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    app:drawableStartCompat="@drawable/ic_barcode_scan"
+                    app:drawableTint="@color/text_primary" />
 
                 <Button
                     android:id="@+id/btnCodOemQcCode"
@@ -147,9 +166,14 @@
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
+                    android:drawablePadding="6dp"
                     android:focusable="true"
+                    android:gravity="center"
+                    android:paddingHorizontal="10dp"
                     android:textColor="@color/accent_amber_text"
-                    android:textSize="11sp" />
+                    android:textSize="11sp"
+                    app:drawableStartCompat="@drawable/ic_specs_chip"
+                    app:drawableTint="@color/accent_amber_text" />
             </LinearLayout>
 
             <TextView
@@ -273,9 +297,14 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_badge_pass"
+                android:drawablePadding="6dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
                 android:textColor="@color/status_pass_fg"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_check_mark"
+                app:drawableTint="@color/status_pass_fg" />
 
             <Button
                 android:id="@+id/btnCodFail"
@@ -284,9 +313,14 @@
                 android:layout_marginStart="10dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_badge_fail"
+                android:drawablePadding="6dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
                 android:textColor="@color/status_fail_fg"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_cross_mark"
+                app:drawableTint="@color/status_fail_fg" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootReport"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -31,14 +32,17 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
+            <ImageButton
                 android:id="@+id/btnBackReport"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="@drawable/bg_btn_secondary"
+                android:contentDescription="Back"
                 android:focusable="true"
-                android:paddingHorizontal="14dp"
-                android:textColor="@color/text_primary" />
+                android:padding="11dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_back"
+                app:tint="@color/text_primary" />
 
             <TextView
                 android:id="@+id/tvReportTitle"
@@ -108,11 +112,16 @@
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_btn_secondary"
+                android:drawablePadding="6dp"
                 android:focusable="true"
+                android:gravity="center"
                 android:paddingHorizontal="12dp"
-                android:text="*#06#"
+                android:text="IMEI"
                 android:textColor="@color/accent_amber_text"
-                android:textStyle="bold" />
+                android:textSize="12sp"
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_barcode_scan"
+                app:drawableTint="@color/accent_amber_text" />
         </LinearLayout>
 
         <EditText
@@ -142,9 +151,15 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_secondary"
+                android:drawablePadding="5dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="8dp"
                 android:textColor="@color/text_primary"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_copy_clip"
+                app:drawableTint="@color/text_secondary" />
 
             <Button
                 android:id="@+id/btnExportJson"
@@ -153,9 +168,15 @@
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_secondary"
+                android:drawablePadding="5dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="8dp"
                 android:textColor="@color/text_primary"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_share_export"
+                app:drawableTint="@color/text_secondary" />
 
             <Button
                 android:id="@+id/btnExportPdf"
@@ -164,10 +185,15 @@
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_primary"
+                android:drawablePadding="5dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="8dp"
                 android:textColor="@color/text_on_accent"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:textSize="11sp"
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_report_doc"
+                app:drawableTint="@color/text_on_accent" />
         </LinearLayout>
 
         <LinearLayout
@@ -182,10 +208,15 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_secondary"
+                android:drawablePadding="6dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
                 android:textColor="@color/accent_amber_text"
                 android:textSize="12sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_qr_matrix"
+                app:drawableTint="@color/accent_amber_text" />
 
             <Button
                 android:id="@+id/btnShareCardPng"
@@ -194,10 +225,15 @@
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_secondary"
+                android:drawablePadding="6dp"
                 android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
                 android:textColor="@color/text_primary"
                 android:textSize="12sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:drawableStartCompat="@drawable/ic_share_export"
+                app:drawableTint="@color/text_primary" />
         </LinearLayout>
 
         <TextView

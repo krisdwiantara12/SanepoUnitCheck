@@ -94,7 +94,7 @@ class SensorTestActivity : AppCompatActivity(), SensorEventListener {
         val pressureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
         pressureSensorPresent = pressureSensor != null
 
-        binding.btnBackSensor.text = Lang.t(this, "KEMBALI", "BACK")
+        binding.btnBackSensor.contentDescription = Lang.t(this, "Kembali", "Back")
         binding.tvSensorTitle.text = Lang.t(this, "Sensor & Biometrik", "Sensors & Biometrics")
         binding.tvBiometricHeader.text = Lang.t(this, "KEAMANAN BIOMETRIK (SIDIK JARI / FACE)", "BIOMETRICS (FINGERPRINT / FACE)")
         binding.btnTestBiometric.text = Lang.t(this, "UJI AUTENTIKASI BIOMETRIK", "RUN BIOMETRIC PROMPT")
