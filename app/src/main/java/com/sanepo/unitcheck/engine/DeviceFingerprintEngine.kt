@@ -2,6 +2,7 @@ package com.sanepo.unitcheck.engine
 
 import android.app.ActivityManager
 import android.app.admin.DevicePolicyManager
+import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.MediaDrm
@@ -14,6 +15,8 @@ import android.opengl.GLES20
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.os.storage.StorageManager
+import android.provider.Settings
 import com.sanepo.unitcheck.model.CpuCoreInfo
 import com.sanepo.unitcheck.model.DeviceFingerprint
 import com.sanepo.unitcheck.model.ThermalReading
@@ -27,6 +30,7 @@ import kotlin.math.roundToInt
 
 object DeviceFingerprintEngine {
     private val WIDEVINE_UUID = UUID(-0x121074568629b532L, -0x5c37d8232ae2de13L)
+    private const val EGL_OPENGL_ES3_BIT = 0x0040
 
     data class StorageBenchResult(
         val readMbps: Float,
@@ -69,6 +73,7 @@ object DeviceFingerprintEngine {
         val statFs = StatFs(dataDir.path)
         val storageTotal = statFs.totalBytes
         val storageFree = statFs.availableBytes
+        val chipTotal = resolvePhysicalStorageChipBytes(context, storageTotal)
 
         val blStatus = resolveBootloaderStatus()
         val verifiedState = SystemPropReader.firstNonBlank("ro.boot.verifiedbootstate", "ro.boot.veritymode")
@@ -103,7 +108,9 @@ object DeviceFingerprintEngine {
             commercialName = commercialName,
             abiList = abis,
             amTotalRam = memInfo.totalMem,
-            procMemTotal = procMem.first
+            procMemTotal = procMem.first,
+            statFsTotalBytes = storageTotal,
+            chipTotalBytes = chipTotal
         )
 
         return DeviceFingerprint(
@@ -138,6 +145,7 @@ object DeviceFingerprintEngine {
             storageDeviceName = storagePair.second,
             storageTotalBytes = storageTotal,
             storageFreeBytes = storageFree,
+            storageChipTotalBytes = chipTotal,
             storageReadMbps = readMbps,
             storageWriteMbps = writeMbps,
             storageBenchNote = benchNote,
@@ -162,11 +170,16 @@ object DeviceFingerprintEngine {
             "ro.product.vendor.marketname",
             "ro.product.odm.marketname",
             "ro.vendor.oplus.market.name",
+            "ro.product.oplus.marketname",
             "ro.oppo.market.name",
             "ro.vivo.market.name",
+            "ro.vendor.vivo.market.name",
             "ro.config.marketing_name",
             "ro.transsion.product.name",
+            "ro.asus.product.mkt_name",
             "ro.semc.product.name",
+            "ro.product.model.display",
+            "ro.config.devicename",
             "ro.product.model.for.market"
         )
         if (marketProp.isNotBlank()) {
@@ -180,6 +193,39 @@ object DeviceFingerprintEngine {
         }
         val cleanBrand = brand.ifBlank { manufacturer }
         return if (model.startsWith(cleanBrand, ignoreCase = true)) model else "$cleanBrand $model".trim()
+    }
+
+    private fun resolvePhysicalStorageChipBytes(context: Context, statFsTotalBytes: Long): Long {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val ssm = context.getSystemService(Context.STORAGE_STATS_SERVICE) as? StorageStatsManager
+                val total = ssm?.getTotalBytes(StorageManager.UUID_DEFAULT) ?: 0L
+                if (total > 0L) return total
+            } catch (_: Throwable) {
+            }
+        }
+        val sectors = SystemPropReader.readLong("/sys/block/sda/size")
+            ?: SystemPropReader.readLong("/sys/block/mmcblk0/size")
+        if (sectors != null && sectors > 0L) {
+            val rawBytes = sectors * 512L
+            if (rawBytes > 4L * 1024L * 1024L * 1024L) {
+                return snapDecimalGigabyteTier(rawBytes)
+            }
+        }
+        return snapDecimalGigabyteTier(statFsTotalBytes)
+    }
+
+    private fun snapDecimalGigabyteTier(bytes: Long): Long {
+        if (bytes <= 0L) return 0L
+        val tiersGb = longArrayOf(16L, 32L, 64L, 128L, 256L, 512L, 1024L, 2048L)
+        val gbApprox = bytes / 1_000_000_000.0
+        for (tier in tiersGb) {
+            // Account for Android OS/vendor/userdata overhead (partitioned size ~58%..102% of marketing chip tier).
+            if (gbApprox <= tier * 1.04 && gbApprox >= tier * 0.56) {
+                return tier * 1_000_000_000L
+            }
+        }
+        return bytes
     }
 
     private data class ParsedCpuInfo(
@@ -317,12 +363,14 @@ object DeviceFingerprintEngine {
         val list = ArrayList<CpuCoreInfo>()
         for (i in 0 until 16) {
             val base = "/sys/devices/system/cpu/cpu$i"
-            if (!File(base).exists()) break
+            if (!File(base).exists()) continue
+            val online = SystemPropReader.readLong("$base/online")
             val minKhz = SystemPropReader.readLong("$base/cpufreq/cpuinfo_min_freq") ?: 0L
             val curKhz = SystemPropReader.readLong("$base/cpufreq/scaling_cur_freq") ?: 0L
             val maxKhz = SystemPropReader.readLong("$base/cpufreq/cpuinfo_max_freq") ?: 0L
+            val defaultGov = if (online == 0L) "offline/hotplug" else "restricted"
             val gov = SystemPropReader.readFirstLine("$base/cpufreq/scaling_governor").orEmpty()
-                .ifEmpty { "offline/restricted" }
+                .ifEmpty { defaultGov }
             list.add(CpuCoreInfo(i, minKhz, curKhz, maxKhz, gov))
         }
         return list
@@ -345,18 +393,23 @@ object DeviceFingerprintEngine {
     }
 
     private fun queryGpuOpenGl(): Triple<String, String, String> {
+        val es3 = tryEglQuery(clientVersion = 3, renderableBit = EGL_OPENGL_ES3_BIT)
+        if (es3 != null) return es3
+        return tryEglQuery(clientVersion = 2, renderableBit = EGL14.EGL_OPENGL_ES2_BIT)
+            ?: Triple("Unknown", "Unknown", "Unknown")
+    }
+
+    private fun tryEglQuery(clientVersion: Int, renderableBit: Int): Triple<String, String, String>? {
         var display: EGLDisplay = EGL14.EGL_NO_DISPLAY
         var surface: EGLSurface = EGL14.EGL_NO_SURFACE
         var context: EGLContext = EGL14.EGL_NO_CONTEXT
         return try {
             display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
-            if (display == EGL14.EGL_NO_DISPLAY) return Triple("Unknown", "Unknown", "Unknown")
+            if (display == EGL14.EGL_NO_DISPLAY) return null
             val version = IntArray(2)
-            if (!EGL14.eglInitialize(display, version, 0, version, 1)) {
-                return Triple("Unknown", "Unknown", "Unknown")
-            }
+            if (!EGL14.eglInitialize(display, version, 0, version, 1)) return null
             val attribList = intArrayOf(
-                EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                EGL14.EGL_RENDERABLE_TYPE, renderableBit,
                 EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT,
                 EGL14.EGL_RED_SIZE, 8,
                 EGL14.EGL_GREEN_SIZE, 8,
@@ -366,21 +419,20 @@ object DeviceFingerprintEngine {
             val configs = arrayOfNulls<EGLConfig>(1)
             val numConfigs = IntArray(1)
             if (!EGL14.eglChooseConfig(display, attribList, 0, configs, 0, 1, numConfigs, 0) || numConfigs[0] == 0) {
-                return Triple("Unknown", "Unknown", "Unknown")
+                return null
             }
-            val ctxAttribs = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE)
+            val ctxAttribs = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, clientVersion, EGL14.EGL_NONE)
             context = EGL14.eglCreateContext(display, configs[0], EGL14.EGL_NO_CONTEXT, ctxAttribs, 0)
+            if (context == EGL14.EGL_NO_CONTEXT) return null
             val surfAttribs = intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE)
             surface = EGL14.eglCreatePbufferSurface(display, configs[0], surfAttribs, 0)
-            if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
-                return Triple("Unknown", "Unknown", "Unknown")
-            }
+            if (!EGL14.eglMakeCurrent(display, surface, surface, context)) return null
             val vendor = GLES20.glGetString(GLES20.GL_VENDOR).orEmpty().ifBlank { "Unknown" }
             val renderer = GLES20.glGetString(GLES20.GL_RENDERER).orEmpty().ifBlank { "Unknown" }
             val glVersion = GLES20.glGetString(GLES20.GL_VERSION).orEmpty().ifBlank { "OpenGL ES" }
             Triple(vendor, renderer, glVersion)
         } catch (_: Throwable) {
-            Triple("Unknown", "Unknown", "Unknown")
+            null
         } finally {
             try {
                 if (display != EGL14.EGL_NO_DISPLAY) {
@@ -444,7 +496,6 @@ object DeviceFingerprintEngine {
         val writeTotalBytes = 8 * 1024 * 1024
 
         return try {
-            // Use "rwd" (O_DSYNC) so writes flush directly to flash storage without RAM write-back skew.
             val writeStart = System.nanoTime()
             RandomAccessFile(tempFile, "rwd").use { raf ->
                 var written = 0
@@ -456,7 +507,6 @@ object DeviceFingerprintEngine {
             val writeSec = ((System.nanoTime() - writeStart) / 1_000_000_000.0).coerceAtLeast(0.01)
             val writeMbps = ((writeTotalBytes / (1024.0 * 1024.0)) / writeSec).toFloat()
 
-            // Measure cold read from untouched read-only system/framework files to avoid reading our own page cache.
             val coldRead = measureColdSystemRead(writeBlock)
             val (readMbps, note) = if (coldRead != null) {
                 Pair(coldRead, "Direct Sync Write (rwd) + Cold System Read")
@@ -563,25 +613,47 @@ object DeviceFingerprintEngine {
         knoxGuardState: String,
         mdmAdmins: List<String>
     ): List<String> {
-        val found = ArrayList<String>()
+        val found = LinkedHashSet<String>()
         val pm = context.packageManager
-        val loanPackages = listOf(
+
+        val strictLoanPackages = listOf(
             "com.payjoy.access" to "PayJoy Finance Lock",
             "com.payjoy.status" to "PayJoy Status",
             "com.novo.knox.lock" to "Knox Finance Lock",
-            "com.homecredit.finance" to "HomeCredit Lock",
-            "com.kredivo.paylater" to "Kredivo Device Lock",
+            "com.samsung.android.SFPlus" to "Samsung Finance+",
+            "in.ertz.samsungfinanceplus" to "Samsung Finance+ (DLC)",
+            "com.samsung.android.finance" to "Samsung Finance Lock",
             "com.trustonic.telecoms.standard.dlc" to "Trustonic DLC Lock",
             "com.trustonic.telecoms.client.standard.dlc.playground" to "Trustonic DLC",
+            "com.coloros.lockassistant" to "OPPO/realme Finance Lock",
+            "com.transsion.financelock" to "Transsion Finance Lock",
             "com.google.android.apps.work.clouddpc" to "Enterprise CloudDPC"
         )
-        for ((pkg, label) in loanPackages) {
+        for ((pkg, label) in strictLoanPackages) {
             if (isPackageInstalled(pm, pkg)) {
                 found.add("$label ($pkg)")
             }
         }
 
-        // Samsung Knox Guard client exists on stock ROMs; only flag if KG state is non-clean or active admin.
+        // Consumer paylater / leasing apps can also exist normally on seller's phone; flag clearly as active Device Admin OR installed financing app warning.
+        val indoFinanceApps = listOf(
+            "com.finaccel.android" to "Kredivo",
+            "com.kredivo.paylater" to "Kredivo PayLater",
+            "com.homecredit.finance" to "HomeCredit",
+            "io.silvrr.installment" to "Akulaku",
+            "com.google.android.apps.kids.familylinkhelper" to "Google Family Link Supervision"
+        )
+        for ((pkg, label) in indoFinanceApps) {
+            if (isPackageInstalled(pm, pkg)) {
+                val isAdmin = mdmAdmins.any { it.contains(pkg, ignoreCase = true) }
+                if (isAdmin || pkg.contains("familylink")) {
+                    found.add("$label [ADMIN LOCK] ($pkg)")
+                } else {
+                    found.add("$label Installed [Verify No Unpaid Device Loan] ($pkg)")
+                }
+            }
+        }
+
         val kgInstalled = isPackageInstalled(pm, "com.samsung.android.kgclient")
         val kgAbnormal = knoxGuardState.contains("lock", ignoreCase = true) ||
             knoxGuardState.contains("active", ignoreCase = true) ||
@@ -591,7 +663,25 @@ object DeviceFingerprintEngine {
         if (kgInstalled && kgAbnormal) {
             found.add("Samsung Knox Guard Active ($knoxGuardState)")
         }
-        return found
+
+        // Scan Enabled Accessibility Services for stealth financing/remote-lock monitors via QUERY_ALL_PACKAGES.
+        try {
+            val enabledAcc = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ).orEmpty().lowercase()
+            if (enabledAcc.isNotBlank()) {
+                val keywords = arrayOf("payjoy", "dlc", "trustonic", "knox", "mdm", "lock", "finance", "clouddpc")
+                for (entry in enabledAcc.split(':')) {
+                    if (keywords.any { kw -> entry.contains(kw) }) {
+                        found.add("Accessibility Lock Service ($entry)")
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+        }
+
+        return found.toList()
     }
 
     private fun isPackageInstalled(pm: PackageManager, pkg: String): Boolean {
@@ -612,7 +702,9 @@ object DeviceFingerprintEngine {
         commercialName: String,
         abiList: String,
         amTotalRam: Long,
-        procMemTotal: Long
+        procMemTotal: Long,
+        statFsTotalBytes: Long,
+        chipTotalBytes: Long
     ): List<String> {
         val warnings = ArrayList<String>()
         val expectedAndroidMajor = when (Build.VERSION.SDK_INT) {
@@ -649,6 +741,18 @@ object DeviceFingerprintEngine {
             val diffRatio = abs(amTotalRam - procMemTotal).toDouble() / procMemTotal.toDouble()
             if (diffRatio > 0.30) {
                 warnings.add("RAM MISMATCH: ActivityManager vs /proc/meminfo differs ${(diffRatio * 100).toInt()}%")
+            }
+        }
+
+        if (chipTotalBytes > 0L && statFsTotalBytes > 0L && chipTotalBytes < statFsTotalBytes * 0.9) {
+            warnings.add("STORAGE MISMATCH: Chip tier smaller than reported /data partition")
+        }
+
+        val sdaSectors = SystemPropReader.readLong("/sys/block/sda/size")
+        if (sdaSectors != null && sdaSectors > 0L) {
+            val physBytes = sdaSectors * 512L
+            if (statFsTotalBytes > physBytes * 1.15) {
+                warnings.add("FAKE STORAGE: Reported /data exceeds physical UFS block size!")
             }
         }
         return warnings

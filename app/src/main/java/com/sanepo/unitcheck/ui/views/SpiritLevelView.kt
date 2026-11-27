@@ -6,7 +6,9 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.View
+import java.util.Locale
 import kotlin.math.hypot
 import kotlin.math.min
 
@@ -18,15 +20,21 @@ class SpiritLevelView @JvmOverloads constructor(
     private var tiltX = 0f
     private var tiltY = 0f
 
+    private fun dp(v: Float): Float =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics)
+
+    private fun sp(v: Float): Float =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
+
     private val bgPaint = Paint().apply { color = Color.parseColor("#0A0C0E") }
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#5A6778")
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = dp(1.5f)
     }
     private val crossPaint = Paint().apply {
         color = Color.parseColor("#323A45")
-        strokeWidth = 2f
+        strokeWidth = dp(1f)
     }
     private val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#FF6B00")
@@ -38,7 +46,7 @@ class SpiritLevelView @JvmOverloads constructor(
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#F4F6F8")
-        textSize = 26f
+        textSize = sp(11f)
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
     }
 
@@ -56,7 +64,7 @@ class SpiritLevelView @JvmOverloads constructor(
 
         val cx = w / 2f
         val cy = h / 2f
-        val maxR = (min(w, h) * 0.4f).coerceAtLeast(24f)
+        val maxR = (min(w, h) * 0.4f).coerceAtLeast(dp(16f))
 
         canvas.drawLine(cx - maxR, cy, cx + maxR, cy, crossPaint)
         canvas.drawLine(cx, cy - maxR, cx, cy + maxR, crossPaint)
@@ -69,8 +77,8 @@ class SpiritLevelView @JvmOverloads constructor(
         val by = cy + normY * (maxR * 0.85f)
         val isFlat = hypot(tiltX.toDouble(), tiltY.toDouble()) < 0.7
 
-        canvas.drawCircle(bx, by, 18f, if (isFlat) levelBubblePaint else bubblePaint)
-        val readout = String.format("X:%.2f Y:%.2f m/s2", tiltX, tiltY)
-        canvas.drawText(readout, 16f, h - 14f, textPaint)
+        canvas.drawCircle(bx, by, dp(8f), if (isFlat) levelBubblePaint else bubblePaint)
+        val readout = String.format(Locale.US, "X:%.2f Y:%.2f m/s2", tiltX, tiltY)
+        canvas.drawText(readout, dp(8f), h - dp(7f), textPaint)
     }
 }

@@ -39,10 +39,22 @@
             android:id="@+id/tvCameraTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_marginStart="10dp"
             android:layout_weight="1"
             android:textColor="@color/text_primary"
-            android:textSize="18sp"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnSpotCheckGuide"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_btn_secondary"
+            android:focusable="true"
+            android:paddingHorizontal="10dp"
+            android:textColor="@color/text_primary"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <Button
@@ -51,16 +63,50 @@
             android:layout_height="48dp"
             android:background="@drawable/bg_btn_secondary"
             android:focusable="true"
-            android:paddingHorizontal="12dp"
-            android:textColor="@color/accent_amber_text" />
+            android:paddingHorizontal="10dp"
+            android:textColor="@color/accent_amber_text"
+            android:textSize="11sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
-    <TextureView
-        android:id="@+id/cameraPreviewTexture"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="10dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
+
+        <TextureView
+            android:id="@+id/cameraPreviewTexture"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:id="@+id/tvAfLiveBadge"
+            style="@style/TechValueMono"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_badge_ready"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="5dp"
+            android:text="FRAME..."
+            android:textColor="@color/text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvSpotCheckBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_card_sharp"
+            android:padding="10dp"
+            android:textColor="@color/accent_amber_text"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <TextView
         android:id="@+id/tvCameraInfo"

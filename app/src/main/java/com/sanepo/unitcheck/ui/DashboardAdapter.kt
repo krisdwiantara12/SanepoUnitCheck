@@ -94,6 +94,7 @@ class DashboardAdapter(
             val verified = pass + warn + fail
 
             val fp = DiagnosticStore.fingerprint
+            val rf = DiagnosticStore.connectivitySnapshot
             val criticalAlerts = ArrayList<String>()
             if (fp != null) {
                 if (fp.knoxGuardState.contains("LOCK", ignoreCase = true) ||
@@ -110,6 +111,9 @@ class DashboardAdapter(
                 if (fp.specTamperWarnings.isNotEmpty()) {
                     criticalAlerts.add("Spec Tamper: ${fp.specTamperWarnings.joinToString()}")
                 }
+            }
+            if (rf != null && rf.hasDualSimSplitBlock) {
+                criticalAlerts.add("Dual-SIM Split Block: ${rf.sim1Details} / ${rf.sim2Details}")
             }
 
             if (criticalAlerts.isNotEmpty()) {
@@ -147,7 +151,7 @@ class DashboardAdapter(
             btnSpecs.text = Lang.t(context, "SPEK DETAIL", "FULL SPECS")
             btnSpecs.setOnClickListener { onShowFullSpecs() }
 
-            btnCodWizard.text = Lang.t(context, "MODE COD CEPAT (WIZARD)", "GUIDED COD WIZARD")
+            btnCodWizard.text = Lang.t(context, "MODE KILAT COD 90s / WIZARD", "QUICK COD 90s / WIZARD")
             btnCodWizard.setOnClickListener { onStartCodWizard() }
 
             btnResetSession.text = Lang.t(context, "RESET SESI", "RESET SESSION")
@@ -159,11 +163,12 @@ class DashboardAdapter(
             } else {
                 val rootLabel = if (fp.rootIndicators.isEmpty()) "Clean" else "${fp.rootIndicators.size} flag(s)"
                 val mdmLabel = if (fp.mdmAdmins.isEmpty()) "None" else "${fp.mdmAdmins.size} active"
+                val diskStr = ReportExporter.formatStorageMarketingAndUsable(fp.storageChipTotalBytes, fp.storageTotalBytes)
                 buildString {
                     appendLine("Unit      : ${fp.commercialName} [${fp.deviceCodename}]")
                     appendLine("OS / Patch: Android ${fp.androidVersion} | ${fp.securityPatch}")
                     appendLine("SoC / GPU : ${fp.socBrand} ${fp.socModel} | ${fp.gpuRenderer}")
-                    appendLine("RAM / Disk: ${ReportExporter.formatBytes(fp.ramTotalBytes)} | ${fp.storageType} ${ReportExporter.formatBytes(fp.storageTotalBytes)}")
+                    appendLine("RAM / Disk: ${ReportExporter.formatBytes(fp.ramTotalBytes)} | ${fp.storageType} $diskStr")
                     append("Boot/DRM  : BL=${fp.bootloaderLocked} | KG=${fp.knoxGuardState} | Root=$rootLabel | MDM=$mdmLabel | DRM=${fp.widevineLevel}")
                 }
             }

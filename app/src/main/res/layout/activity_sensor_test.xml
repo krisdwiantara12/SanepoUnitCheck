@@ -52,6 +52,56 @@
         </LinearLayout>
 
         <TextView
+            android:id="@+id/tvProximityHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_badge_warn"
+            android:padding="10dp"
+            android:textColor="@color/status_warn_fg"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!-- Conditional Barometer Airtightness Seal Section (only shown if Sensor.TYPE_PRESSURE exists!) -->
+        <TextView
+            android:id="@+id/tvBaroSealHeader"
+            style="@style/TechSectionHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/cardBaroSeal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_card_sharp"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvBaroSealStatus"
+                style="@style/TechValueMono"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="4dp"
+                android:textColor="@color/text_primary" />
+
+            <Button
+                android:id="@+id/btnStartBaroSealTest"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_btn_primary"
+                android:focusable="true"
+                android:textColor="@color/text_on_accent"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
             android:id="@+id/tvBiometricHeader"
             style="@style/TechSectionHeader"
             android:layout_width="match_parent"

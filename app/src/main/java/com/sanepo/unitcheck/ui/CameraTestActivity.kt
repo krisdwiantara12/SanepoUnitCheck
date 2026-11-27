@@ -4,19 +4,25 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.TotalCaptureResult
+import android.hardware.camera2.params.MeteringRectangle
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
@@ -47,6 +53,7 @@ class CameraTestActivity : AppCompatActivity() {
     private var torchEnabled = false
     private var currentZoomRatio = 1.0f
     private var currentActiveArray: Rect? = null
+    private var currentMinFocusDistance = 0f
     private var zoomOptions: List<Float> = listOf(1.0f)
 
     private var cameraThread: HandlerThread? = null
@@ -54,7 +61,14 @@ class CameraTestActivity : AppCompatActivity() {
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
     private var previewBuilder: CaptureRequest.Builder? = null
+
     private val verifiedLenses = LinkedHashSet<String>()
+    private val testedZoomLabels = LinkedHashSet<String>()
+    private var currentLensFrames = 0
+    private var currentLensHasSignal = false
+    private var afVerifiedSuccess = false
+    private var spotGuideActive = false
+    private var lastAfBadgeState = -1
 
     private val cameraPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -72,6 +86,7 @@ class CameraTestActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCameraTestBinding.inflate(layoutInflater)
@@ -90,10 +105,16 @@ class CameraTestActivity : AppCompatActivity() {
         }
 
         binding.btnBackCamera.text = Lang.t(this, "KEMBALI", "BACK")
-        binding.tvCameraTitle.text = Lang.t(this, "Kamera Multi-Lensa & Torch", "Multi-Lens Camera & Torch")
+        binding.tvCameraTitle.text = Lang.t(this, "Kamera, Jamur & Fokus", "Camera, Spot & AF")
+        binding.btnSpotCheckGuide.text = Lang.t(this, "CEK JAMUR", "SPOT/AF")
         binding.btnTorchToggle.text = "TORCH OFF"
         binding.btnCameraPass.text = Lang.t(this, "KAMERA PASS", "CAMERA PASS")
         binding.btnCameraFail.text = Lang.t(this, "KAMERA FAIL", "CAMERA FAIL")
+        binding.tvSpotCheckBanner.text = Lang.t(
+            this,
+            "PANDUAN JAMUR & OIS: Arahkan kamera ke bidang PUTIH TERANG (kertas/layar HP lain) di Zoom 0.6x/1x/2x untuk cek titik jamur ungu/hitam. Lalu arahkan ke objek dekat (~10cm) & TAP layar untuk tes kunci Autofokus + cek apakah OIS bergetar/bunyi krek.",
+            "SENSOR SPOT & OIS GUIDE: Point lens at bright white paper/screen (0.6x/1x/2x) to spot dust/fungus dots. Then tap near a close-up object (~10cm) to verify AF lock & OIS stability."
+        )
 
         lenses = CameraEnumerator.enumerate(this)
         DiagnosticStore.cameraLenses = lenses
@@ -107,7 +128,21 @@ class CameraTestActivity : AppCompatActivity() {
 
         binding.btnBackCamera.setOnClickListener { finish() }
         binding.btnTorchToggle.setOnClickListener { toggleTorch() }
-        binding.cameraPreviewTexture.setOnClickListener { triggerAutofocus() }
+        binding.btnSpotCheckGuide.setOnClickListener {
+            spotGuideActive = !spotGuideActive
+            binding.tvSpotCheckBanner.visibility = if (spotGuideActive) View.VISIBLE else View.GONE
+            binding.btnSpotCheckGuide.setBackgroundResource(if (spotGuideActive) R.drawable.bg_btn_primary else R.drawable.bg_btn_secondary)
+            binding.btnSpotCheckGuide.setTextColor(
+                ContextCompat.getColor(this, if (spotGuideActive) R.color.text_on_accent else R.color.text_primary)
+            )
+        }
+
+        binding.cameraPreviewTexture.setOnTouchListener { v, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_UP) {
+                triggerTapAutofocus(ev.x, ev.y, v.width, v.height)
+            }
+            true
+        }
 
         binding.btnCameraPass.setOnClickListener {
             val hasBack = lenses.any { it.facingLabel == "BACK" }
@@ -121,18 +156,19 @@ class CameraTestActivity : AppCompatActivity() {
             if ((hasBack && !backVerified) || (hasFront && !frontVerified)) {
                 val msg = Lang.t(
                     this,
-                    "Wajib buka & cek minimal 1 kamera BELAKANG dan 1 kamera DEPAN sebelum PASS!",
-                    "Must open at least 1 BACK and 1 FRONT lens before PASS!"
+                    "Wajib tampilkan frame gambar nyata minimal 1 kamera BELAKANG dan 1 kamera DEPAN sebelum PASS!",
+                    "Must stream live non-black frames on at least 1 BACK and 1 FRONT lens before PASS!"
                 )
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 binding.tvCameraInfo.text = msg
                 return@setOnClickListener
             }
-            val ids = lenses.joinToString(",") { it.cameraId }
+            val zoomNote = if (testedZoomLabels.isNotEmpty()) " | Zoom: ${testedZoomLabels.joinToString(",")}" else ""
+            val afNote = if (afVerifiedSuccess) " | AF=LOCKED" else ""
             DiagnosticStore.updateItem(
                 "camera_lenses",
                 TestStatus.PASS,
-                "Verified ${verifiedLenses.size}/${lenses.size} lenses (IDs: $ids) | Back+Front OK"
+                "Verified ${verifiedLenses.size}/${lenses.size} active lenses$zoomNote$afNote | Back+Front OK"
             )
             CodWizardFlow.advanceOrFinish(this)
         }
@@ -140,7 +176,7 @@ class CameraTestActivity : AppCompatActivity() {
             DiagnosticStore.updateItem(
                 "camera_lenses",
                 TestStatus.FAIL,
-                "Camera defect / focus / zoom / torch failure flagged"
+                "Camera defect / black frame / focus / spot / torch failure flagged"
             )
             CodWizardFlow.advanceOrFinish(this)
         }
@@ -156,7 +192,62 @@ class CameraTestActivity : AppCompatActivity() {
                 return true
             }
 
-            override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+            override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+                onPreviewFrameArrived()
+            }
+        }
+    }
+
+    private fun onPreviewFrameArrived() {
+        val lens = lenses.getOrNull(currentLensIndex) ?: return
+        currentLensFrames++
+        if (currentLensHasSignal) return
+
+        // Validate real sensor frame data after stream warms up (>=5 frames) so dead/unplugged black-frame HALs cannot pass falsely.
+        if (currentLensFrames >= 5 && (currentLensFrames == 5 || currentLensFrames % 15 == 0)) {
+            val luma = samplePreviewLuma()
+            if (luma >= 1.2f) {
+                currentLensHasSignal = true
+                verifiedLenses.add(lens.cameraId)
+                runOnUiThread {
+                    if (!isDestroyed && !afVerifiedSuccess && currentMinFocusDistance <= 0f) {
+                        binding.tvAfLiveBadge.text = "STREAM OK (FIXED)"
+                        binding.tvAfLiveBadge.setBackgroundResource(R.drawable.bg_badge_pass)
+                        binding.tvAfLiveBadge.setTextColor(ContextCompat.getColor(this, R.color.status_pass_fg))
+                    } else if (!isDestroyed && currentLensFrames <= 6) {
+                        binding.tvAfLiveBadge.text = "STREAM OK | TAP AF"
+                        binding.tvAfLiveBadge.setBackgroundResource(R.drawable.bg_badge_ready)
+                        binding.tvAfLiveBadge.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+                    }
+                }
+            } else if (currentLensFrames >= 20) {
+                runOnUiThread {
+                    if (!isDestroyed) {
+                        binding.tvAfLiveBadge.text = "BLACK FRAME (0% LUMA)!"
+                        binding.tvAfLiveBadge.setBackgroundResource(R.drawable.bg_badge_fail)
+                        binding.tvAfLiveBadge.setTextColor(ContextCompat.getColor(this, R.color.status_fail_fg))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun samplePreviewLuma(): Float {
+        return try {
+            val bmp = binding.cameraPreviewTexture.getBitmap(16, 16) ?: return 10f
+            var sum = 0L
+            val pixels = IntArray(256)
+            bmp.getPixels(pixels, 0, 16, 0, 0, 16, 16)
+            bmp.recycle()
+            for (px in pixels) {
+                val r = Color.red(px)
+                val g = Color.green(px)
+                val b = Color.blue(px)
+                sum += (r + g + b) / 3
+            }
+            sum.toFloat() / pixels.size.toFloat()
+        } catch (_: Throwable) {
+            10f
         }
     }
 
@@ -180,12 +271,23 @@ class CameraTestActivity : AppCompatActivity() {
                 setOnClickListener {
                     currentLensIndex = idx
                     currentZoomRatio = 1.0f.coerceIn(lens.minZoomRatio, lens.maxZoomRatio)
+                    resetTorchOnSwitch()
                     refreshLensButtonHighlights()
                     buildZoomButtons(lens)
                     openLens(idx)
                 }
             }
             binding.rowLensButtons.addView(btn)
+        }
+    }
+
+    private fun resetTorchOnSwitch() {
+        if (torchEnabled) {
+            torchEnabled = false
+            binding.btnTorchToggle.text = "TORCH OFF"
+            lenses.firstOrNull { it.flashSupported }?.let {
+                CameraEnumerator.setTorch(this, it.cameraId, false)
+            }
         }
     }
 
@@ -209,13 +311,7 @@ class CameraTestActivity : AppCompatActivity() {
         currentZoomRatio = currentZoomRatio.coerceIn(lens.minZoomRatio, lens.maxZoomRatio)
 
         for (ratio in zoomOptions) {
-            val label = if (ratio < 1.0f) {
-                String.format(Locale.US, "%.1fx (UW)", ratio)
-            } else if (abs(ratio - ratio.toInt()) < 0.05f) {
-                "${ratio.toInt()}x"
-            } else {
-                String.format(Locale.US, "%.1fx", ratio)
-            }
+            val label = formatZoomLabel(ratio)
             val btn = Button(this).apply {
                 text = label
                 textSize = 11f
@@ -235,10 +331,24 @@ class CameraTestActivity : AppCompatActivity() {
                 lp.marginEnd = (6 * resources.displayMetrics.density).toInt()
                 layoutParams = lp
                 setPadding(20, 0, 20, 0)
-                setOnClickListener { applyZoom(ratio) }
+                setOnClickListener {
+                    testedZoomLabels.add(label)
+                    applyZoom(ratio)
+                }
             }
             binding.rowZoomButtons.addView(btn)
         }
+    }
+
+    private fun formatZoomLabel(ratio: Float): String {
+        val clean = if (ratio < 1.0f) {
+            String.format(Locale.US, "%.1fx (UW)", ratio)
+        } else if (abs(ratio - ratio.toInt()) < 0.05f) {
+            "${ratio.toInt()}x"
+        } else {
+            String.format(Locale.US, "%.1fx", ratio)
+        }
+        return clean
     }
 
     private fun refreshZoomHighlights() {
@@ -278,7 +388,7 @@ class CameraTestActivity : AppCompatActivity() {
         val session = captureSession ?: return
         try {
             applyZoomToBuilder(builder)
-            session.setRepeatingRequest(builder.build(), null, cameraHandler)
+            session.setRepeatingRequest(builder.build(), captureCallback, cameraHandler)
         } catch (_: Throwable) {
         }
     }
@@ -305,6 +415,41 @@ class CameraTestActivity : AppCompatActivity() {
         openLens(currentLensIndex)
     }
 
+    private val captureCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(
+            session: CameraCaptureSession,
+            request: CaptureRequest,
+            result: TotalCaptureResult
+        ) {
+            val afState = result.get(CaptureResult.CONTROL_AF_STATE) ?: return
+            if (afState == lastAfBadgeState) return
+            lastAfBadgeState = afState
+            runOnUiThread {
+                if (isDestroyed || !currentLensHasSignal) return@runOnUiThread
+                when (afState) {
+                    CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED,
+                    CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED -> {
+                        afVerifiedSuccess = true
+                        binding.tvAfLiveBadge.text = if (currentMinFocusDistance <= 0f) "FIXED FOCUS OK" else "AF: LOCKED OK"
+                        binding.tvAfLiveBadge.setBackgroundResource(R.drawable.bg_badge_pass)
+                        binding.tvAfLiveBadge.setTextColor(ContextCompat.getColor(this@CameraTestActivity, R.color.status_pass_fg))
+                    }
+                    CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN,
+                    CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN -> {
+                        binding.tvAfLiveBadge.text = "AF: FOCUSING..."
+                        binding.tvAfLiveBadge.setBackgroundResource(R.drawable.bg_badge_warn)
+                        binding.tvAfLiveBadge.setTextColor(ContextCompat.getColor(this@CameraTestActivity, R.color.status_warn_fg))
+                    }
+                    CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED -> {
+                        binding.tvAfLiveBadge.text = "AF: GAGAL LOCK!"
+                        binding.tvAfLiveBadge.setBackgroundResource(R.drawable.bg_badge_fail)
+                        binding.tvAfLiveBadge.setTextColor(ContextCompat.getColor(this@CameraTestActivity, R.color.status_fail_fg))
+                    }
+                }
+            }
+        }
+    }
+
     @SuppressLint("MissingPermission")
     private fun openLens(index: Int) {
         if (index !in lenses.indices) return
@@ -317,6 +462,12 @@ class CameraTestActivity : AppCompatActivity() {
 
         closeCamera()
         ensureCameraThread()
+        currentLensFrames = 0
+        currentLensHasSignal = false
+        lastAfBadgeState = -1
+        binding.tvAfLiveBadge.text = "STREAM..."
+        binding.tvAfLiveBadge.setBackgroundResource(R.drawable.bg_badge_ready)
+        binding.tvAfLiveBadge.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
 
         val lens = lenses[index]
         val focal = lens.focalLengthsMm.joinToString("/") { "${it}mm" }.ifEmpty { "N/A" }
@@ -332,7 +483,6 @@ class CameraTestActivity : AppCompatActivity() {
             cameraManager.openCamera(lens.cameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     cameraDevice = camera
-                    verifiedLenses.add(lens.cameraId)
                     startPreviewSession(camera, lens)
                 }
 
@@ -345,7 +495,7 @@ class CameraTestActivity : AppCompatActivity() {
                     camera.close()
                     if (cameraDevice == camera) cameraDevice = null
                     runOnUiThread {
-                        binding.tvCameraInfo.text = "Camera ID ${lens.cameraId} open error ($error). Try Zoom buttons (0.6x/2x) on main ID 0."
+                        binding.tvCameraInfo.text = "Camera ID ${lens.cameraId} restricted by OEM ($error). Use Zoom buttons (0.6x/2x) on main ID 0."
                     }
                 }
             }, cameraHandler)
@@ -359,12 +509,13 @@ class CameraTestActivity : AppCompatActivity() {
         try {
             val ch = cameraManager.getCameraCharacteristics(lens.cameraId)
             currentActiveArray = ch.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+            currentMinFocusDistance = ch.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
             val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val sizes = map?.getOutputSizes(SurfaceTexture::class.java)
             val chosen = sizes?.firstOrNull { it.width <= 1920 && it.height <= 1080 } ?: sizes?.firstOrNull()
             if (chosen != null) {
                 st.setDefaultBufferSize(chosen.width, chosen.height)
-                runOnUiThread { configureTransform(chosen.width, chosen.height, ch) }
+                runOnUiThread { configureTransform(chosen.width, chosen.height) }
             }
             val surface = Surface(st)
             val builder = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
@@ -382,7 +533,7 @@ class CameraTestActivity : AppCompatActivity() {
                 override fun onConfigured(session: CameraCaptureSession) {
                     captureSession = session
                     try {
-                        session.setRepeatingRequest(builder.build(), null, cameraHandler)
+                        session.setRepeatingRequest(builder.build(), captureCallback, cameraHandler)
                     } catch (_: Throwable) {
                     }
                 }
@@ -396,48 +547,98 @@ class CameraTestActivity : AppCompatActivity() {
         }
     }
 
-    private fun configureTransform(bufW: Int, bufH: Int, ch: CameraCharacteristics) {
+    private fun configureTransform(bufW: Int, bufH: Int) {
         val vw = binding.cameraPreviewTexture.width.toFloat()
         val vh = binding.cameraPreviewTexture.height.toFloat()
         if (vw <= 0f || vh <= 0f) return
-        val sensorOrientation = ch.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+
+        val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display?.rotation ?: Surface.ROTATION_0
+        } else {
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.rotation
+        }
+
         val matrix = Matrix()
-        val cx = vw / 2f
-        val cy = vh / 2f
-        if (sensorOrientation == 90 || sensorOrientation == 270) {
+        val viewRect = RectF(0f, 0f, vw, vh)
+        // Camera buffer natural orientation in portrait view has height/width swapped for aspect calculation.
+        val bufferRect = RectF(0f, 0f, bufH.toFloat(), bufW.toFloat())
+        val cx = viewRect.centerX()
+        val cy = viewRect.centerY()
+
+        if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
+            bufferRect.offset(cx - bufferRect.centerX(), cy - bufferRect.centerY())
+            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
+            val scale = maxOf(vh / bufH.toFloat(), vw / bufW.toFloat())
+            matrix.postScale(scale, scale, cx, cy)
+            matrix.postRotate((90 * (rotation - 2)).toFloat(), cx, cy)
+        } else {
             val scale = maxOf(vw / bufH.toFloat(), vh / bufW.toFloat())
             matrix.setScale((bufH * scale) / vw, (bufW * scale) / vh, cx, cy)
-        } else {
-            val scale = maxOf(vw / bufW.toFloat(), vh / bufH.toFloat())
-            matrix.setScale((bufW * scale) / vw, (bufH * scale) / vh, cx, cy)
+            if (Surface.ROTATION_180 == rotation) {
+                matrix.postRotate(180f, cx, cy)
+            }
         }
         binding.cameraPreviewTexture.setTransform(matrix)
     }
 
-    private fun triggerAutofocus() {
+    private fun triggerTapAutofocus(touchX: Float, touchY: Float, viewW: Int, viewH: Int) {
         val session = captureSession ?: return
         val builder = previewBuilder ?: return
+        val activeRect = currentActiveArray
+        if (currentMinFocusDistance <= 0f) {
+            binding.tvAfLiveBadge.text = "FIXED FOCUS"
+            return
+        }
         try {
+            if (activeRect != null && viewW > 0 && viewH > 0) {
+                val nx = (touchY / viewH.toFloat()).coerceIn(0.05f, 0.95f)
+                val ny = (1.0f - (touchX / viewW.toFloat())).coerceIn(0.05f, 0.95f)
+                val focusW = (activeRect.width() * 0.14f).toInt().coerceAtLeast(80)
+                val focusH = (activeRect.height() * 0.14f).toInt().coerceAtLeast(80)
+                val fx = (activeRect.left + nx * activeRect.width()).toInt()
+                val fy = (activeRect.top + ny * activeRect.height()).toInt()
+                val region = Rect(
+                    (fx - focusW / 2).coerceIn(activeRect.left, activeRect.right - 2),
+                    (fy - focusH / 2).coerceIn(activeRect.top, activeRect.bottom - 2),
+                    (fx + focusW / 2).coerceIn(activeRect.left + 2, activeRect.right),
+                    (fy + focusH / 2).coerceIn(activeRect.top + 2, activeRect.bottom)
+                )
+                val meteringRect = MeteringRectangle(region, MeteringRectangle.METERING_WEIGHT_MAX)
+                builder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(meteringRect))
+                builder.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(meteringRect))
+            }
+            lastAfBadgeState = -1
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
+            session.setRepeatingRequest(builder.build(), captureCallback, cameraHandler)
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
-            session.capture(builder.build(), null, cameraHandler)
+            session.capture(builder.build(), captureCallback, cameraHandler)
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
         } catch (_: Throwable) {
         }
     }
 
     private fun toggleTorch() {
+        val lens = lenses.getOrNull(currentLensIndex)
+        if (lens != null && !lens.flashSupported) {
+            Toast.makeText(
+                this,
+                Lang.t(this, "Lensa ${lens.facingLabel} ini tidak memiliki LED Flash. Pindah ke lensa BACK untuk tes Torch.", "This lens has no Flash. Switch to BACK lens for Torch."),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         torchEnabled = !torchEnabled
         binding.btnTorchToggle.text = if (torchEnabled) "TORCH ON" else "TORCH OFF"
         val builder = previewBuilder
         val session = captureSession
-        val lens = lenses.getOrNull(currentLensIndex)
         if (builder != null && session != null && lens != null && lens.flashSupported) {
             try {
                 builder.set(
                     CaptureRequest.FLASH_MODE,
                     if (torchEnabled) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF
                 )
-                session.setRepeatingRequest(builder.build(), null, cameraHandler)
+                session.setRepeatingRequest(builder.build(), captureCallback, cameraHandler)
                 return
             } catch (_: Throwable) {
             }
@@ -477,13 +678,7 @@ class CameraTestActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        if (torchEnabled) {
-            torchEnabled = false
-            binding.btnTorchToggle.text = "TORCH OFF"
-            lenses.firstOrNull { it.flashSupported }?.let {
-                CameraEnumerator.setTorch(this, it.cameraId, false)
-            }
-        }
+        resetTorchOnSwitch()
         closeCamera()
         try {
             cameraThread?.quitSafely()

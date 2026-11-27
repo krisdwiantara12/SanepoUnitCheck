@@ -2,15 +2,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- All hardware diagnostic modules run offline; INTERNET is used strictly for opt-in GitHub Release updates in About -->
+    <!-- All hardware diagnostic modules run offline; INTERNET is used for optional GitHub Release OTA & 3s cellular data ping check -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -64,6 +68,9 @@
             <action android:name="android.intent.action.DIAL" />
         </intent>
         <intent>
+            <action android:name="android.settings.DEVICE_INFO_SETTINGS" />
+        </intent>
+        <intent>
             <action android:name="android.settings.SYNC_SETTINGS" />
         </intent>
         <intent>
@@ -75,13 +82,19 @@
             <data android:mimeType="application/vnd.android.package-archive" />
         </intent>
         <package android:name="com.samsung.android.kgclient" />
+        <package android:name="com.samsung.android.SFPlus" />
+        <package android:name="in.ertz.samsungfinanceplus" />
         <package android:name="com.payjoy.access" />
         <package android:name="com.payjoy.status" />
         <package android:name="com.novo.knox.lock" />
         <package android:name="com.google.android.apps.work.clouddpc" />
         <package android:name="com.google.android.apps.enterprise.dmagent" />
         <package android:name="com.homecredit.finance" />
+        <package android:name="com.finaccel.android" />
         <package android:name="com.kredivo.paylater" />
+        <package android:name="io.silvrr.installment" />
+        <package android:name="com.coloros.lockassistant" />
+        <package android:name="com.transsion.financelock" />
         <package android:name="com.trustonic.telecoms.standard.dlc" />
         <package android:name="com.trustonic.telecoms.client.standard.dlc.playground" />
     </queries>
@@ -98,7 +111,9 @@
 
         <activity
             android:name=".ui.MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -108,61 +123,88 @@
 
         <activity
             android:name=".ui.DisplayTestActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck.Fullscreen" />
 
         <activity
             android:name=".ui.TouchTestActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck.Fullscreen" />
 
         <activity
             android:name=".ui.CameraTestActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck" />
 
         <activity
             android:name=".ui.AudioTestActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck" />
 
         <activity
             android:name=".ui.SensorTestActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck" />
 
         <activity
             android:name=".ui.BatteryDetailActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck" />
 
         <activity
             android:name=".ui.ConnectivityTestActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck" />
 
         <activity
             android:name=".ui.ButtonPortTestActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck" />
 
         <activity
             android:name=".ui.CodPreBuyActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.ReportActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.AboutActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SanepoUnitCheck" />
+
+        <activity
+            android:name=".ui.ImeiScannerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="false"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.SanepoUnitCheck" />
 
         <provider

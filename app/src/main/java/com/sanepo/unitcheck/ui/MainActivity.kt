@@ -54,9 +54,9 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
 
         adapter = DashboardAdapter(
             context = this,
-            onRunAutoScan = { runFullAutoScan() },
+            onRunAutoScan = { runFullAutoScan(onDone = null) },
             onShowFullSpecs = { showFullFingerprintDialog() },
-            onStartCodWizard = { CodWizardFlow.startWizard(this) },
+            onStartCodWizard = { showCodWizardModeDialog() },
             onResetSession = { confirmResetSession() },
             onOpenAbout = { startActivity(Intent(this, AboutActivity::class.java)) },
             onItemClick = { item -> handleDiagnosticItemClick(item) }
@@ -143,12 +143,45 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
         rfSensorGroup.forEach { list.add(DashboardAdapter.Row.TestRow(it)) }
 
         if (codSafetyGroup.isNotEmpty()) {
-            list.add(DashboardAdapter.Row.Header(Lang.t(this, "KEAMANAN COD & KALKULATOR HARGA", "COD SAFETY & PRICE CALCULATOR")))
+            list.add(DashboardAdapter.Row.Header(Lang.t(this, "KEAMANAN COD & CEK IMEI", "COD SAFETY & IMEI CHECK")))
             codSafetyGroup.forEach { list.add(DashboardAdapter.Row.TestRow(it)) }
         }
         list.add(DashboardAdapter.Row.Footer)
 
         adapter.submitData(list)
+    }
+
+    private fun showCodWizardModeDialog() {
+        val opts = arrayOf(
+            Lang.t(
+                this,
+                "MODE KILAT COD (~90 Detik)\nAuto-Scan + Layar + Touch/LCD KW + Loopback Audio/Mic + Kamera AF + Sinyal Dual-SIM + Checklist",
+                "QUICK COD EXPRESS (~90 Sec)\nAuto-Scan + Display + Touch/Panel Check + Auto Loopback + Camera AF + SIM RF + Checklist"
+            ),
+            Lang.t(
+                this,
+                "INSPEKSI LENGKAP TEKNISI (10 Modul)\nTermasuk Stress Test Baterai 45s, Sensor Barometer/Biometrik & Semua Tombol/OTG",
+                "FULL TECHNICIAN INSPECTION (10 Modules)\nIncludes 45s Battery Stress, Barometer Seal/Bio & All Keys/OTG"
+            )
+        )
+        AlertDialog.Builder(this)
+            .setTitle(Lang.t(this, "Pilih Jalur Inspeksi COD", "Select COD Inspection Mode"))
+            .setItems(opts) { _, which ->
+                if (which == 0) {
+                    Toast.makeText(
+                        this,
+                        Lang.t(this, "Memulai Auto-Scan + Mode Kilat COD...", "Starting Auto-Scan + Quick COD Express..."),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    runFullAutoScan {
+                        CodWizardFlow.startWizard(this@MainActivity, express = true)
+                    }
+                } else {
+                    CodWizardFlow.startWizard(this, express = false)
+                }
+            }
+            .setNegativeButton(Lang.t(this, "Batal", "Cancel"), null)
+            .show()
     }
 
     private fun maybeCheckUpdateQuietly() {
@@ -177,8 +210,8 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
             .setMessage(
                 Lang.t(
                     this,
-                    "Semua hasil tes unit saat ini, catatan penjual & kalkulator akan dihapus ke awal.",
-                    "All current unit results, seller notes, and calculator entries will be cleared."
+                    "Semua hasil tes unit saat ini dan catatan transaksi/IMEI akan dihapus ke awal.",
+                    "All current unit results and seller/IMEI notes will be cleared."
                 )
             )
             .setPositiveButton(Lang.t(this, "Ya, Reset", "Yes, Reset")) { _, _ ->
@@ -200,13 +233,15 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
             DiagnosticStore.fingerprint = fp
             DiagnosticStore.displaySpecs = DisplayDiagnosticsHelper.readSpecs(applicationContext)
             DiagnosticStore.batteryTelemetry = BatteryHardwareReader.read(applicationContext)
+            DiagnosticStore.connectivitySnapshot = SensorAndRFEngine.collectConnectivitySnapshot(applicationContext)
+            DiagnosticStore.persistSnapshotMeta()
             runOnUiThread {
                 if (!isDestroyed) rebuildDashboardRows()
             }
         }
     }
 
-    private fun runFullAutoScan() {
+    private fun runFullAutoScan(onDone: (() -> Unit)?) {
         if (adapter.isScanning) return
         adapter.isScanning = true
         adapter.scanProgressPct = 15
@@ -230,10 +265,11 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
             )
             DiagnosticStore.fingerprint = fpFull
             val benchStatus = if (bench.readMbps > 0f && bench.writeMbps > 0f) TestStatus.PASS else TestStatus.WARN
+            val diskStr = ReportExporter.formatStorageMarketingAndUsable(fpFull.storageChipTotalBytes, fpFull.storageTotalBytes)
             DiagnosticStore.updateItem(
                 "storage_benchmark",
                 benchStatus,
-                "${fpFull.storageType}: R ${bench.readMbps} MB/s | W ${bench.writeMbps} MB/s (${bench.note}) | Free ${ReportExporter.formatBytes(fpFull.storageFreeBytes)}"
+                "${fpFull.storageType} $diskStr: R ${bench.readMbps} | W ${bench.writeMbps} MB/s"
             )
 
             runOnUiThread {
@@ -245,42 +281,57 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
             DiagnosticStore.batteryTelemetry = bat
             DiagnosticStore.appendBatterySample(bat.currentMa)
             val prevStress = DiagnosticStore.batteryStressSummary
-            val batStatus = when {
-                prevStress != null && !prevStress.passed -> TestStatus.FAIL
-                bat.healthLabel == "Dead" || bat.healthLabel == "Overheat" -> TestStatus.FAIL
-                bat.estimatedHealthPct != null && bat.estimatedHealthPct < 75 -> TestStatus.WARN
-                else -> TestStatus.PASS
+            // Preserve previously completed 45s Stress Test summary if Auto-Scan runs afterward.
+            if (prevStress != null) {
+                val cellNote = if (bat.isDualCellPack) "${prevStress.minVoltageMv / 2}mV/sel" else "${prevStress.minVoltageMv}mV"
+                DiagnosticStore.updateItem(
+                    "battery_charging",
+                    if (prevStress.passed) TestStatus.PASS else TestStatus.FAIL,
+                    "${bat.levelPct}% | ${bat.currentMa}mA | Stress45s ${if (prevStress.passed) "OK" else "FAIL"} (min $cellNote)"
+                )
+            } else {
+                val batStatus = when {
+                    bat.healthLabel == "Dead" || bat.healthLabel == "Overheat" -> TestStatus.FAIL
+                    bat.estimatedHealthPct != null && bat.estimatedHealthPct < 75 -> TestStatus.WARN
+                    else -> TestStatus.PASS
+                }
+                val healthText = bat.estimatedHealthPct?.let { "$it%" } ?: bat.healthLabel
+                DiagnosticStore.updateItem(
+                    "battery_charging",
+                    batStatus,
+                    "${bat.levelPct}% | ${bat.currentMa}mA | ${bat.voltageMv}mV | ${bat.tempCelsius}C | Health: $healthText"
+                )
             }
-            val healthText = bat.estimatedHealthPct?.let { "$it%" } ?: bat.healthLabel
-            DiagnosticStore.updateItem(
-                "battery_charging",
-                batStatus,
-                "${bat.levelPct}% | ${bat.currentMa}mA | ${bat.voltageMv}mV | ${bat.tempCelsius}C | Health: $healthText"
-            )
 
-            val rf = SensorAndRFEngine.collectConnectivitySnapshot(applicationContext)
+            val prevProbe = DiagnosticStore.connectivitySnapshot?.cellularDataCheckSummary.orEmpty()
+            val rf = SensorAndRFEngine.collectConnectivitySnapshot(applicationContext, existingCellDataCheck = prevProbe)
             DiagnosticStore.connectivitySnapshot = rf
             val badBaseband = rf.basebandVersion.contains("unknown", ignoreCase = true) ||
                 rf.basebandVersion.contains("missing", ignoreCase = true)
             val simInserted = rf.sim1State == "SIM READY" || rf.sim2State == "SIM READY"
             val rfStatus = when {
                 badBaseband -> TestStatus.FAIL
+                rf.hasDualSimSplitBlock -> TestStatus.WARN
                 simInserted && !rf.isCellularInService && rf.serviceStateLabel != "Perm Required" -> TestStatus.WARN
                 else -> TestStatus.PASS
             }
             DiagnosticStore.updateItem(
                 "connectivity_rf",
                 rfStatus,
-                "Baseband=${rf.basebandVersion.take(22)} | ${rf.serviceStateLabel} | SIM1=${rf.sim1State} | WiFi5G=${rf.wifi5GhzSupported} | NFC=${rf.nfcStatus}"
+                "Baseband=${rf.basebandVersion.take(20)} | ${rf.serviceStateLabel} | SIM1=${rf.sim1State} SIM2=${rf.sim2State} | NFC=${rf.nfcStatus}"
             )
 
             DiagnosticStore.displaySpecs = DisplayDiagnosticsHelper.readSpecs(applicationContext)
             DiagnosticStore.cameraLenses = CameraEnumerator.enumerate(applicationContext)
+            DiagnosticStore.persistSnapshotMeta()
 
             runOnUiThread {
                 adapter.isScanning = false
                 adapter.scanProgressPct = 100
                 rebuildDashboardRows()
+                if (!isDestroyed && !isFinishing) {
+                    onDone?.invoke()
+                }
             }
         }
     }
@@ -347,10 +398,12 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
                     storageBenchNote = bench.note
                 )
             DiagnosticStore.fingerprint = fp
+            DiagnosticStore.persistSnapshotMeta()
+            val diskStr = ReportExporter.formatStorageMarketingAndUsable(fp.storageChipTotalBytes, fp.storageTotalBytes)
             DiagnosticStore.updateItem(
                 "storage_benchmark",
                 if (bench.readMbps > 0f && bench.writeMbps > 0f) TestStatus.PASS else TestStatus.WARN,
-                "${fp.storageType}: R ${bench.readMbps} MB/s | W ${bench.writeMbps} MB/s (${bench.note}) | Free ${ReportExporter.formatBytes(fp.storageFreeBytes)}"
+                "${fp.storageType} $diskStr: R ${bench.readMbps} | W ${bench.writeMbps} MB/s | Free ${ReportExporter.formatBytes(fp.storageFreeBytes)}"
             )
         }
     }
@@ -360,6 +413,7 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
         val text = if (fp == null) {
             Lang.t(this, "Data hardware sedang dimuat...", "Loading hardware fingerprint...")
         } else {
+            val diskLabel = ReportExporter.formatStorageMarketingAndUsable(fp.storageChipTotalBytes, fp.storageTotalBytes)
             buildString {
                 appendLine("=== IDENTITY ===")
                 appendLine("Commercial : ${fp.commercialName}")
@@ -402,7 +456,7 @@ class MainActivity : AppCompatActivity(), DiagnosticStore.Listener {
                 appendLine("RAM Avail  : ${ReportExporter.formatBytes(fp.ramAvailBytes)}")
                 appendLine("ZRAM/Swap  : ${ReportExporter.formatBytes(fp.zramBytes)} / ${ReportExporter.formatBytes(fp.swapBytes)}")
                 appendLine("Storage    : ${fp.storageType} (${fp.storageDeviceName})")
-                appendLine("Capacity   : ${ReportExporter.formatBytes(fp.storageFreeBytes)} free / ${ReportExporter.formatBytes(fp.storageTotalBytes)}")
+                appendLine("Capacity   : $diskLabel | Free: ${ReportExporter.formatBytes(fp.storageFreeBytes)}")
                 appendLine("Benchmark  : R=${fp.storageReadMbps ?: "-"} MB/s | W=${fp.storageWriteMbps ?: "-"} MB/s (${fp.storageBenchNote})")
                 appendLine()
                 appendLine("=== TAMPER, KNOX, FINANCE & SPEC ===")

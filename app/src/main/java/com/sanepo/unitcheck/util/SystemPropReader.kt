@@ -23,7 +23,10 @@ object SystemPropReader {
     }
 
     fun get(key: String, defaultValue: String = ""): String {
-        propCache[key]?.let { return it.ifEmpty { defaultValue } }
+        val cacheable = key.startsWith("ro.")
+        if (cacheable) {
+            propCache[key]?.let { return it.ifEmpty { defaultValue } }
+        }
         var result = ""
         try {
             val value = systemPropGet?.invoke(null, key, "") as? String
@@ -37,7 +40,9 @@ object SystemPropReader {
         if (result.isEmpty()) {
             result = execLine(arrayOf("getprop", key))
         }
-        propCache[key] = result
+        if (cacheable) {
+            propCache[key] = result
+        }
         return result.ifEmpty { defaultValue }
     }
 

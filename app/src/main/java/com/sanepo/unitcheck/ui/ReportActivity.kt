@@ -1,11 +1,11 @@
 package com.sanepo.unitcheck.ui
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -14,6 +14,7 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -23,18 +24,38 @@ import androidx.core.view.WindowInsetsCompat
 import com.sanepo.unitcheck.BuildConfig
 import com.sanepo.unitcheck.R
 import com.sanepo.unitcheck.databinding.ActivityReportBinding
+import com.sanepo.unitcheck.engine.BatteryHardwareReader
+import com.sanepo.unitcheck.engine.DeviceFingerprintEngine
+import com.sanepo.unitcheck.engine.DisplayDiagnosticsHelper
+import com.sanepo.unitcheck.engine.OemDeviceHelper
 import com.sanepo.unitcheck.engine.ReportExporter
+import com.sanepo.unitcheck.engine.SensorAndRFEngine
 import com.sanepo.unitcheck.model.DiagnosticStore
 import com.sanepo.unitcheck.util.Lang
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 
 class ReportActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityReportBinding
     private var suppressWatcher = false
+    private val reloadExecutor = Executors.newSingleThreadExecutor()
+
+    private val scannerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == Activity.RESULT_OK && res.data != null) {
+            val raw = res.data?.getStringExtra(ImeiScannerActivity.EXTRA_RAW_CODE).orEmpty()
+            val digits = res.data?.getStringExtra(ImeiScannerActivity.EXTRA_DIGITS).orEmpty()
+            val valStr = digits.ifEmpty { raw }
+            if (valStr.isNotEmpty()) {
+                binding.etImeiNote.setText(valStr)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,6 +77,7 @@ class ReportActivity : AppCompatActivity() {
         binding.btnBackReport.text = Lang.t(this, "KEMBALI", "BACK")
         binding.tvReportTitle.text = Lang.t(this, "Laporan Teknisi & Ekspor", "Technician Report & Export")
         binding.tvMetaHeader.text = Lang.t(this, "CATATAN TRANSAKSI / IMEI (OPSIONAL)", "TRANSACTION & IMEI NOTES (OPTIONAL)")
+        binding.btnDialImei.text = "IMEI / SCAN"
         binding.btnCopyTextReport.text = Lang.t(this, "SALIN TEKS", "COPY TEXT")
         binding.btnExportJson.text = "SHARE JSON"
         binding.btnExportPdf.text = "EXPORT PDF"
@@ -87,13 +109,12 @@ class ReportActivity : AppCompatActivity() {
 
         binding.btnBackReport.setOnClickListener { finish() }
         binding.btnDialImei.setOnClickListener {
-            try {
-                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:*%2306%23")))
-            } catch (_: Throwable) {
+            OemDeviceHelper.showOemImeiAndQcDialog(this) {
+                scannerLauncher.launch(Intent(this, ImeiScannerActivity::class.java))
             }
         }
         binding.btnCopyTextReport.setOnClickListener {
-            val txt = ReportExporter.buildTextReport()
+            val txt = ReportExporter.buildTextReport(Lang.isIndonesian(this))
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("SanepoUnitReport", txt))
             showFeedback(Lang.t(this, "Teks laporan disalin ke clipboard.", "Report text copied to clipboard."))
@@ -112,14 +133,37 @@ class ReportActivity : AppCompatActivity() {
             shareFile(file, "image/png")
         }
 
+        ensureHardwareMetadataPresent()
         refreshPreview()
+    }
+
+    private fun ensureHardwareMetadataPresent() {
+        if (DiagnosticStore.fingerprint != null && DiagnosticStore.connectivitySnapshot != null) return
+        reloadExecutor.execute {
+            if (DiagnosticStore.fingerprint == null) {
+                DiagnosticStore.fingerprint = DeviceFingerprintEngine.collect(applicationContext)
+            }
+            if (DiagnosticStore.displaySpecs == null) {
+                DiagnosticStore.displaySpecs = DisplayDiagnosticsHelper.readSpecs(applicationContext)
+            }
+            if (DiagnosticStore.batteryTelemetry == null) {
+                DiagnosticStore.batteryTelemetry = BatteryHardwareReader.read(applicationContext)
+            }
+            if (DiagnosticStore.connectivitySnapshot == null) {
+                DiagnosticStore.connectivitySnapshot = SensorAndRFEngine.collectConnectivitySnapshot(applicationContext)
+            }
+            DiagnosticStore.persistSnapshotMeta()
+            runOnUiThread {
+                if (!isDestroyed && !isFinishing) refreshPreview()
+            }
+        }
     }
 
     private fun refreshPreview() {
         val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
         val hash = ReportExporter.computeVerifyHash(dateStr)
         binding.tvVerifyHash.text = "VERIFY SHA-256: #$hash | Offline Signed Audit"
-        binding.tvReportPreview.text = ReportExporter.buildTextReport()
+        binding.tvReportPreview.text = ReportExporter.buildTextReport(Lang.isIndonesian(this))
     }
 
     private fun showVerifyQrDialog() {
@@ -177,6 +221,11 @@ class ReportActivity : AppCompatActivity() {
     private fun showFeedback(msg: String) {
         binding.tvExportFeedback.visibility = View.VISIBLE
         binding.tvExportFeedback.text = msg
+    }
+
+    override fun onDestroy() {
+        reloadExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.View
 
 class AudioMeterView @JvmOverloads constructor(
@@ -15,11 +16,14 @@ class AudioMeterView @JvmOverloads constructor(
     private var levelFraction = 0f
     private var peakFraction = 0f
 
+    private fun dp(v: Float): Float =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics)
+
     private val bgPaint = Paint().apply { color = Color.parseColor("#0A0C0E") }
     private val borderPaint = Paint().apply {
         color = Color.parseColor("#323A45")
         style = Paint.Style.STROKE
-        strokeWidth = 2f
+        strokeWidth = dp(1f)
     }
     private val offSegmentPaint = Paint().apply { color = Color.parseColor("#1C2229") }
     private val greenPaint = Paint().apply { color = Color.parseColor("#22C55E") }
@@ -46,8 +50,8 @@ class AudioMeterView @JvmOverloads constructor(
         canvas.drawRect(1f, 1f, w - 1f, h - 1f, borderPaint)
 
         val segments = 24
-        val pad = 10f
-        val gap = 4f
+        val pad = dp(5f)
+        val gap = dp(2f)
         val usableW = (w - pad * 2 - gap * (segments - 1)).coerceAtLeast(1f)
         val segW = usableW / segments
         val litCount = (levelFraction * segments).toInt()

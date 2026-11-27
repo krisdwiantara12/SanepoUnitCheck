@@ -10,7 +10,9 @@ import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -74,8 +76,8 @@ class ButtonPortTestActivity : AppCompatActivity() {
         binding.tvKeysTitle.text = Lang.t(this, "Tombol Fisik, Trigger & Port", "Buttons, Triggers & Ports")
         binding.tvKeysHint.text = Lang.t(
             this,
-            "Tekan Volume Atas/Bawah, Back (1x untuk tes), matikan/nyalakan layar untuk Power, atau colok charger / USB OTG / Headset 3.5mm.",
-            "Press Volume +/-, Back (1st press tests Back key), lock/unlock screen for Power key, or plug Charger / USB OTG / 3.5mm Headset."
+            "Tekan Volume Atas/Bawah, Back, matikan/nyalakan layar untuk Power, atau colok charger / USB OTG / Headset 3.5mm.",
+            "Press Volume +/-, Back, lock/unlock screen for Power key, or plug Charger / USB OTG / 3.5mm Headset."
         )
         binding.tvKeysHeader.text = Lang.t(this, "STATUS TOMBOL FISIK", "PHYSICAL KEYS MATRIX")
         binding.tvPortsHeader.text = Lang.t(this, "STATUS PORT USB, OTG & JACK 3.5MM", "USB, OTG & 3.5MM AUDIO JACK")
@@ -83,14 +85,7 @@ class ButtonPortTestActivity : AppCompatActivity() {
         binding.btnKeysFail.text = Lang.t(this, "ADA TOMBOL/PORT RUSAK", "KEY / PORT FAIL")
 
         binding.btnBackKeys.setOnClickListener { finish() }
-        binding.btnKeysPass.setOnClickListener {
-            DiagnosticStore.updateItem(
-                "buttons_ports",
-                TestStatus.PASS,
-                "Vol+=$volUpHit Vol-=$volDownHit Power=$powerCycleHit Back=$backKeyHit OTG=$usbOtgDevicesCount"
-            )
-            CodWizardFlow.advanceOrFinish(this)
-        }
+        binding.btnKeysPass.setOnClickListener { savePassAndExit() }
         binding.btnKeysFail.setOnClickListener {
             DiagnosticStore.updateItem(
                 "buttons_ports",
@@ -104,12 +99,39 @@ class ButtonPortTestActivity : AppCompatActivity() {
         registerHardwareReceivers()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                backKeyHit = true
-                renderStatus()
-                isEnabled = false
+                if (!backKeyHit) {
+                    backKeyHit = true
+                    renderStatus()
+                    Toast.makeText(
+                        this@ButtonPortTestActivity,
+                        Lang.t(this@ButtonPortTestActivity, "Tombol Back OK! Klik PASS/FAIL atau tekan Back lagi untuk keluar.", "Back Key OK! Tap PASS/FAIL or press Back again to exit."),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    AlertDialog.Builder(this@ButtonPortTestActivity)
+                        .setTitle(Lang.t(this@ButtonPortTestActivity, "Keluar Tes Tombol?", "Exit Key Test?"))
+                        .setMessage(Lang.t(this@ButtonPortTestActivity, "Simpan hasil tombol sebagai PASS atau lanjutkan tes?", "Save tested keys or stay?"))
+                        .setPositiveButton(Lang.t(this@ButtonPortTestActivity, "SIMPAN PASS", "SAVE PASS")) { _, _ ->
+                            savePassAndExit()
+                        }
+                        .setNegativeButton(Lang.t(this@ButtonPortTestActivity, "KELUAR TANPA SIMPAN", "DISCARD")) { _, _ ->
+                            finish()
+                        }
+                        .setNeutralButton(Lang.t(this@ButtonPortTestActivity, "LANJUT TES", "STAY"), null)
+                        .show()
+                }
             }
         })
         renderStatus()
+    }
+
+    private fun savePassAndExit() {
+        DiagnosticStore.updateItem(
+            "buttons_ports",
+            TestStatus.PASS,
+            "Vol+=$volUpHit Vol-=$volDownHit Power=$powerCycleHit Back=$backKeyHit OTG=$usbOtgDevicesCount"
+        )
+        CodWizardFlow.advanceOrFinish(this)
     }
 
     private fun refreshInitialPorts() {
@@ -149,18 +171,16 @@ class ButtonPortTestActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) volUpHit = true else volDownHit = true
+                renderStatus()
+            }
+            // Swallow both DOWN and UP so the OEM system volume slider/beep never pops up during testing.
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
-                KeyEvent.KEYCODE_VOLUME_UP -> {
-                    volUpHit = true
-                    renderStatus()
-                    return true
-                }
-                KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    volDownHit = true
-                    renderStatus()
-                    return true
-                }
                 KeyEvent.KEYCODE_ESCAPE -> {
                     finish()
                     return true

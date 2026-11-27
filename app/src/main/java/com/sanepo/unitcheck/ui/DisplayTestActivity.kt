@@ -30,7 +30,6 @@ import com.sanepo.unitcheck.model.DiagnosticStore
 import com.sanepo.unitcheck.model.TestStatus
 import com.sanepo.unitcheck.util.Lang
 import java.util.Locale
-import kotlin.math.abs
 
 class DisplayTestActivity : AppCompatActivity() {
 
@@ -46,24 +45,43 @@ class DisplayTestActivity : AppCompatActivity() {
     private var hudVisible = true
     private val visitedColorIndices = mutableSetOf<Int>()
     private var activeModes: List<Display.Mode> = emptyList()
+    private var selectedModeId: Int = -1
     private var measuredFpsLabel: String? = null
     private var fpsCallback: Choreographer.FrameCallback? = null
+    private var isExpressMode = false
 
-    private val colorSteps = listOf(
-        ColorStep(Color.RED, "Merah Penuh (#FF0000) - Cek Subpixel", "Pure Red (#FF0000) - Subpixel Check"),
-        ColorStep(Color.GREEN, "Hijau Penuh (#00FF00) - Cek Subpixel", "Pure Green (#00FF00) - Subpixel Check"),
-        ColorStep(Color.BLUE, "Biru Penuh (#0000FF) - Cek Subpixel", "Pure Blue (#0000FF) - Subpixel Check"),
-        ColorStep(Color.WHITE, "Putih Penuh (#FFFFFF) - Cek Flek / Kuning", "Pure White (#FFFFFF) - Stain / Tint Check"),
-        ColorStep(Color.BLACK, "Hitam Penuh (#000000) - Cek Light Bleed", "Pure Black (#000000) - Light Bleed / True OLED"),
-        ColorStep(Color.parseColor("#1A1A1A"), "Abu-Abu Gelap 10% (#1A1A1A) - Cek Green Tint / Mura", "10% Dark Grey (#1A1A1A) - OLED Green-Tint / Mura"),
-        ColorStep(Color.parseColor("#808080"), "Abu-Abu 50% (#808080) - Cek Shadow / Burn-In", "50% Grey (#808080) - OLED Burn-In / Uniformity"),
-        ColorStep(Color.YELLOW, "Kuning Penuh (#FFFF00) - Cek White Spot", "Pure Yellow (#FFFF00) - White Spot / Subpixel"),
-        ColorStep(Color.CYAN, "Sian Penuh (#00FFFF) - Cek Dead Pixel", "Pure Cyan (#00FFFF) - Dead Pixel Check"),
-        ColorStep(Color.BLACK, "Gradien Banding RGB + Grayscale - Cek Panel Bit Depth", "Gradient Banding RGB + Greyscale - Bit Depth Check", gradientMode = true)
-    )
+    private val colorSteps: List<ColorStep> by lazy {
+        if (isExpressMode) {
+            listOf(
+                ColorStep(Color.WHITE, "Putih Penuh (#FFFFFF) - Cek Flek / Kuning", "Pure White (#FFFFFF) - Stain / Tint Check"),
+                ColorStep(Color.parseColor("#808080"), "Abu-Abu 50% (#808080) - Cek Shadow / Burn-In OLED", "50% Grey (#808080) - OLED Burn-In / Uniformity"),
+                ColorStep(Color.parseColor("#1A1A1A"), "Abu-Abu Gelap 10% (#1A1A1A) - Cek Green Tint", "10% Dark Grey (#1A1A1A) - Green-Tint / Mura"),
+                ColorStep(Color.RED, "Merah Penuh (#FF0000) - Cek Subpixel", "Pure Red (#FF0000) - Subpixel Check"),
+                ColorStep(Color.GREEN, "Hijau Penuh (#00FF00) - Cek Subpixel", "Pure Green (#00FF00) - Subpixel Check"),
+                ColorStep(Color.BLUE, "Biru Penuh (#0000FF) - Cek Subpixel", "Pure Blue (#0000FF) - Subpixel Check"),
+                ColorStep(Color.BLACK, "Hitam Penuh (#000000) - Cek Light Bleed", "Pure Black (#000000) - Light Bleed")
+            )
+        } else {
+            listOf(
+                ColorStep(Color.RED, "Merah Penuh (#FF0000) - Cek Subpixel", "Pure Red (#FF0000) - Subpixel Check"),
+                ColorStep(Color.GREEN, "Hijau Penuh (#00FF00) - Cek Subpixel", "Pure Green (#00FF00) - Subpixel Check"),
+                ColorStep(Color.BLUE, "Biru Penuh (#0000FF) - Cek Subpixel", "Pure Blue (#0000FF) - Subpixel Check"),
+                ColorStep(Color.WHITE, "Putih Penuh (#FFFFFF) - Cek Flek / Kuning", "Pure White (#FFFFFF) - Stain / Tint Check"),
+                ColorStep(Color.BLACK, "Hitam Penuh (#000000) - Cek Light Bleed", "Pure Black (#000000) - Light Bleed / True OLED"),
+                ColorStep(Color.parseColor("#1A1A1A"), "Abu-Abu Gelap 10% (#1A1A1A) - Cek Green Tint / Mura", "10% Dark Grey (#1A1A1A) - OLED Green-Tint / Mura"),
+                ColorStep(Color.parseColor("#808080"), "Abu-Abu 50% (#808080) - Cek Shadow / Burn-In", "50% Grey (#808080) - OLED Burn-In / Uniformity"),
+                ColorStep(Color.YELLOW, "Kuning Penuh (#FFFF00) - Cek White Spot", "Pure Yellow (#FFFF00) - White Spot / Subpixel"),
+                ColorStep(Color.CYAN, "Sian Penuh (#00FFFF) - Cek Dead Pixel", "Pure Cyan (#00FFFF) - Dead Pixel Check"),
+                ColorStep(Color.BLACK, "Gradien Banding RGB + Grayscale - Cek Bit Depth", "Gradient Banding RGB + Greyscale - Bit Depth Check", gradientMode = true)
+            )
+        }
+    }
+
+    private fun minColorsRequired(): Int = if (isExpressMode) 2 else 4
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        isExpressMode = CodWizardFlow.isExpress(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.attributes = window.attributes.apply {
             screenBrightness = 1.0f
@@ -109,11 +127,12 @@ class DisplayTestActivity : AppCompatActivity() {
             binding.tvTapRestoreHint.visibility = View.VISIBLE
         }
         binding.btnDisplayPass.setOnClickListener {
-            if (visitedColorIndices.size < MIN_COLORS_REQUIRED) {
+            val minReq = minColorsRequired()
+            if (visitedColorIndices.size < minReq) {
                 val msg = Lang.t(
                     this,
-                    "Cek minimal $MIN_COLORS_REQUIRED warna dulu (${visitedColorIndices.size}/$MIN_COLORS_REQUIRED) sebelum PASS!",
-                    "Check at least $MIN_COLORS_REQUIRED colors first (${visitedColorIndices.size}/$MIN_COLORS_REQUIRED) before PASS!"
+                    "Cek minimal $minReq warna dulu (${visitedColorIndices.size}/$minReq) sebelum PASS!",
+                    "Check at least $minReq colors first (${visitedColorIndices.size}/$minReq) before PASS!"
                 )
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 binding.tvDisplaySpecs.text = msg
@@ -121,6 +140,7 @@ class DisplayTestActivity : AppCompatActivity() {
             }
             val s = DisplayDiagnosticsHelper.readSpecs(this)
             DiagnosticStore.displaySpecs = s
+            DiagnosticStore.persistSnapshotMeta()
             val fpsSuffix = measuredFpsLabel?.let { " | $it" } ?: ""
             DiagnosticStore.updateItem(
                 id = "display_pixels",
@@ -133,6 +153,7 @@ class DisplayTestActivity : AppCompatActivity() {
         binding.btnDisplayFail.setOnClickListener {
             val s = DisplayDiagnosticsHelper.readSpecs(this)
             DiagnosticStore.displaySpecs = s
+            DiagnosticStore.persistSnapshotMeta()
             DiagnosticStore.updateItem(
                 id = "display_pixels",
                 status = TestStatus.FAIL,
@@ -161,6 +182,7 @@ class DisplayTestActivity : AppCompatActivity() {
         val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display else windowManager.defaultDisplay
         display ?: return
         val currentMode = display.mode ?: return
+        selectedModeId = currentMode.modeId
         val sameResModes = display.supportedModes
             .filter { it.physicalWidth == currentMode.physicalWidth && it.physicalHeight == currentMode.physicalHeight }
             .distinctBy { it.refreshRate.toInt() }
@@ -169,23 +191,43 @@ class DisplayTestActivity : AppCompatActivity() {
 
         for (mode in sameResModes) {
             val hz = mode.refreshRate.toInt()
+            val selected = mode.modeId == selectedModeId
             val btn = Button(this).apply {
                 text = "${hz}Hz"
                 textSize = 12f
                 isFocusable = true
-                setTextColor(ContextCompat.getColor(context, R.color.text_primary))
-                setBackgroundResource(R.drawable.bg_btn_secondary)
+                setBackgroundResource(if (selected) R.drawable.bg_btn_primary else R.drawable.bg_btn_secondary)
+                setTextColor(
+                    ContextCompat.getColor(
+                        context,
+                        if (selected) R.color.text_on_accent else R.color.text_primary
+                    )
+                )
                 val lp = LinearLayout.LayoutParams(0, (48 * resources.displayMetrics.density).toInt(), 1f)
                 lp.marginEnd = (6 * resources.displayMetrics.density).toInt()
                 layoutParams = lp
                 setOnClickListener {
+                    selectedModeId = mode.modeId
                     window.attributes = window.attributes.apply {
                         preferredDisplayModeId = mode.modeId
                     }
+                    refreshHzButtonHighlights()
                     measureRealFps(mode.refreshRate)
                 }
             }
             binding.rowRefreshRates.addView(btn)
+        }
+    }
+
+    private fun refreshHzButtonHighlights() {
+        for (i in 0 until binding.rowRefreshRates.childCount) {
+            val child = binding.rowRefreshRates.getChildAt(i) as? Button ?: continue
+            val mode = activeModes.getOrNull(i) ?: continue
+            val selected = mode.modeId == selectedModeId
+            child.setBackgroundResource(if (selected) R.drawable.bg_btn_primary else R.drawable.bg_btn_secondary)
+            child.setTextColor(
+                ContextCompat.getColor(this, if (selected) R.color.text_on_accent else R.color.text_primary)
+            )
         }
     }
 
@@ -196,6 +238,8 @@ class DisplayTestActivity : AppCompatActivity() {
         val callback = object : Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
                 frames++
+                // Force a continuous draw pass so LTPO OLED panels hold peak refresh rate instead of throttling to 10/24Hz while idle.
+                binding.rootDisplayTest.postInvalidateOnAnimation()
                 val elapsedNs = frameTimeNanos - startNanos
                 if (elapsedNs >= 650_000_000L && frames > 2) {
                     val actualFps = (frames * 1_000_000_000.0) / elapsedNs.toDouble()
@@ -234,10 +278,11 @@ class DisplayTestActivity : AppCompatActivity() {
             binding.rootDisplayTest.setBackgroundColor(step.hexColor)
         }
         val checkedCount = visitedColorIndices.size
-        val gateTag = if (checkedCount >= MIN_COLORS_REQUIRED) {
+        val minReq = minColorsRequired()
+        val gateTag = if (checkedCount >= minReq) {
             Lang.t(this, "SIAP PASS ($checkedCount/${colorSteps.size})", "READY ($checkedCount/${colorSteps.size})")
         } else {
-            Lang.t(this, "Dicek $checkedCount/$MIN_COLORS_REQUIRED min", "Checked $checkedCount/$MIN_COLORS_REQUIRED min")
+            Lang.t(this, "Dicek $checkedCount/$minReq min", "Checked $checkedCount/$minReq min")
         }
         binding.tvColorTitle.text = "${colorIdx + 1}/${colorSteps.size} [$gateTag]: ${Lang.t(this, step.titleId, step.titleEn)}"
     }
@@ -295,9 +340,5 @@ class DisplayTestActivity : AppCompatActivity() {
 
         @Deprecated("Deprecated in Java")
         override fun getOpacity(): Int = PixelFormat.OPAQUE
-    }
-
-    companion object {
-        private const val MIN_COLORS_REQUIRED = 4
     }
 }

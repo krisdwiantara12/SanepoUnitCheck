@@ -69,44 +69,128 @@
             android:padding="12dp"
             android:textColor="@color/text_primary" />
 
+        <TextView
+            android:id="@+id/tvOemImeiHeader"
+            style="@style/TechSectionHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_card_sharp"
+            android:orientation="vertical"
+            android:padding="12dp">
 
-            <Button
-                android:id="@+id/btnCodDialImei"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_btn_secondary"
-                android:focusable="true"
-                android:textColor="@color/accent_amber_text"
+            <TextView
+                android:id="@+id/tvOemImeiGuide"
+                style="@style/TechValueMono"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnCodImeiSettings"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_primary"
+                    android:focusable="true"
+                    android:textColor="@color/text_on_accent"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnCodDialImei"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:focusable="true"
+                    android:textColor="@color/accent_amber_text"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnCodScanBarcode"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:focusable="true"
+                    android:textColor="@color/text_primary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnCodOemQcCode"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:focusable="true"
+                    android:textColor="@color/accent_amber_text"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvScannedImeiResult"
+                style="@style/TechValueMono"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_control_well"
+                android:padding="10dp"
+                android:textColor="@color/text_primary"
                 android:textSize="12sp"
-                android:textStyle="bold" />
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
 
             <Button
                 android:id="@+id/btnCodOpenAccounts"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
-                android:layout_marginStart="6dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_secondary"
                 android:focusable="true"
                 android:textColor="@color/text_primary"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btnCodOpenSecurity"
                 android:layout_width="0dp"
                 android:layout_height="48dp"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_btn_secondary"
                 android:focusable="true"
                 android:textColor="@color/text_primary"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
         </LinearLayout>
 
         <TextView
@@ -133,6 +217,14 @@
                 android:textSize="13sp" />
 
             <CheckBox
+                android:id="@+id/cbResetReady"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+
+            <CheckBox
                 android:id="@+id/cbImeiMatch"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -150,155 +242,24 @@
         </LinearLayout>
 
         <TextView
-            android:id="@+id/tvCalcHeader"
+            android:id="@+id/tvDefectSummaryHeader"
             style="@style/TechSectionHeader"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp" />
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/tvAutoDefectVerdict"
+            style="@style/TechValueMono"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:background="@drawable/bg_card_sharp"
-            android:orientation="vertical"
-            android:padding="12dp">
-
-            <TextView
-                android:id="@+id/tvAutoDeductionHint"
-                style="@style/TechValueMono"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/accent_amber_text"
-                android:textSize="12sp" />
-
-            <TextView
-                android:id="@+id/lblMarketPrice"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-
-            <EditText
-                android:id="@+id/etMarketPrice"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="4dp"
-                android:background="@drawable/bg_control_well"
-                android:hint="2500000"
-                android:inputType="number"
-                android:paddingHorizontal="12dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/lblTargetProfit"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-
-            <EditText
-                android:id="@+id/etTargetProfit"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="4dp"
-                android:background="@drawable/bg_control_well"
-                android:hint="250000"
-                android:inputType="number"
-                android:paddingHorizontal="12dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/lblDefectDeduction"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-
-            <EditText
-                android:id="@+id/etDefectDeduction"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="4dp"
-                android:background="@drawable/bg_control_well"
-                android:hint="0"
-                android:inputType="number"
-                android:paddingHorizontal="12dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted"
-                android:textSize="14sp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnAddBatDeduction"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_btn_secondary"
-                    android:text="+150rb Bat"
-                    android:textColor="@color/text_primary"
-                    android:textSize="11sp" />
-
-                <Button
-                    android:id="@+id/btnAddLcdDeduction"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_marginStart="6dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_btn_secondary"
-                    android:text="+500rb LCD"
-                    android:textColor="@color/text_primary"
-                    android:textSize="11sp" />
-
-                <Button
-                    android:id="@+id/btnClearDeduction"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_marginStart="6dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_btn_secondary"
-                    android:text="Reset 0"
-                    android:textColor="@color/text_primary"
-                    android:textSize="11sp" />
-            </LinearLayout>
-
-            <EditText
-                android:id="@+id/etPriceNote"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/bg_control_well"
-                android:hint="Catatan minus nego"
-                android:inputType="text"
-                android:paddingHorizontal="12dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_muted"
-                android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/tvMaxBuyResult"
-                style="@style/TechValueMono"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_badge_pass"
-                android:padding="12dp"
-                android:textColor="@color/status_pass_fg"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+            android:background="@drawable/bg_badge_pass"
+            android:lineSpacingExtra="4dp"
+            android:padding="12dp"
+            android:textColor="@color/status_pass_fg"
+            android:textSize="12sp"
+            android:textStyle="bold" />
 
         <LinearLayout
             android:layout_width="match_parent"

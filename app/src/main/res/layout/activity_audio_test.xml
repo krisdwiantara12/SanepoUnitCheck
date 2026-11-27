@@ -58,8 +58,20 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_card_sharp"
+            android:lineSpacingExtra="3dp"
             android:padding="12dp"
             android:textColor="@color/text_secondary" />
+
+        <Button
+            android:id="@+id/btnQuickLoopback"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_btn_primary"
+            android:focusable="true"
+            android:textColor="@color/text_on_accent"
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvSecSpeakers"
@@ -144,9 +156,9 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:background="@drawable/bg_btn_primary"
+                android:background="@drawable/bg_btn_secondary"
                 android:focusable="true"
-                android:textColor="@color/text_on_accent"
+                android:textColor="@color/accent_amber_text"
                 android:textStyle="bold" />
 
             <Button
@@ -167,7 +179,8 @@
             android:layout_marginTop="8dp"
             android:background="@drawable/bg_btn_secondary"
             android:focusable="true"
-            android:textColor="@color/text_primary" />
+            android:textColor="@color/text_primary"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvSecHaptics"

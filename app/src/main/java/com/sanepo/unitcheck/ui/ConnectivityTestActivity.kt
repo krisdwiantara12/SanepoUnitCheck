@@ -11,6 +11,7 @@ import android.location.GpsStatus
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.nfc.NfcAdapter
 import android.nfc.Tag
@@ -26,11 +27,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.sanepo.unitcheck.R
 import com.sanepo.unitcheck.databinding.ActivityConnectivityTestBinding
+import com.sanepo.unitcheck.engine.OemDeviceHelper
 import com.sanepo.unitcheck.engine.SensorAndRFEngine
 import com.sanepo.unitcheck.model.DiagnosticStore
 import com.sanepo.unitcheck.model.TestStatus
 import com.sanepo.unitcheck.util.Lang
+import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
@@ -38,18 +42,20 @@ class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
     private lateinit var binding: ActivityConnectivityTestBinding
     private lateinit var locationManager: LocationManager
     private var nfcAdapter: NfcAdapter? = null
+    private val probeExecutor = Executors.newSingleThreadExecutor()
     private var gnssStartMs = 0L
     private var ttffSec: Float? = null
     private var gnssVisible = 0
     private var gnssUsed = 0
     private var gnssConstellations = "Waiting fix..."
     private var lastNfcTagInfo = "Tap any e-Money/NFC card to rear coil"
+    private var lastCellDataProbe = ""
 
     private val gnssCallbackObj: Any? by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             object : GnssStatus.Callback() {
                 override fun onSatelliteStatusChanged(status: GnssStatus) {
-                    var visible = status.satelliteCount
+                    val visible = status.satelliteCount
                     var used = 0
                     val types = LinkedHashSet<String>()
                     for (i in 0 until visible) {
@@ -138,14 +144,22 @@ class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
         }
 
         binding.btnBackConn.text = Lang.t(this, "KEMBALI", "BACK")
-        binding.tvConnTitle.text = Lang.t(this, "RF, SIM, Wi-Fi, BT, NFC & GNSS", "RF, SIM, Wi-Fi, BT, NFC & GNSS")
+        binding.tvConnTitle.text = Lang.t(this, "RF, Dual-SIM, Data & GPS", "RF, Dual-SIM, Data & GPS")
         binding.btnReqRfPerms.text = Lang.t(this, "IZINKAN & SCAN RF/GPS", "GRANT PERMS & SCAN RF/GPS")
         binding.btnRefreshRf.text = Lang.t(this, "SEGARKAN", "REFRESH")
-        binding.tvConnCellHeader.text = Lang.t(this, "BASEBAND, DUAL-SIM & SINYAL SELULER", "BASEBAND, DUAL-SIM & CELLULAR")
+        binding.tvConnCellHeader.text = Lang.t(this, "BASEBAND, DUAL-SIM PER-SLOT & DATA", "BASEBAND, PER-SLOT SIM & DATA")
+        binding.btnTestCellData.text = Lang.t(this, "TES DATA SELULER (3s)", "TEST CELLULAR DATA (3s)")
+        binding.btnTestOperatorCall.text = Lang.t(this, "PINTASAN CEK TELEPON", "DIAL CARRIER CALL")
         binding.tvConnWifiBtHeader.text = Lang.t(this, "WI-FI BAND & BLUETOOTH", "WI-FI BANDS & BLUETOOTH")
         binding.tvConnNfcGnssHeader.text = Lang.t(this, "NFC & SATELIT GPS/GNSS", "NFC & GNSS SATELLITES")
         binding.btnConnPass.text = Lang.t(this, "KONEKTIVITAS PASS", "RF / GPS PASS")
         binding.btnConnFail.text = Lang.t(this, "BASEBAND / RF FAIL", "RF / BASEBAND FAIL")
+
+        lastCellDataProbe = DiagnosticStore.connectivitySnapshot?.cellularDataCheckSummary.orEmpty()
+        if (lastCellDataProbe.isNotBlank()) {
+            binding.tvCellDataProbeResult.visibility = View.VISIBLE
+            binding.tvCellDataProbeResult.text = lastCellDataProbe
+        }
 
         binding.btnBackConn.setOnClickListener { finish() }
         binding.btnReqRfPerms.setOnClickListener { requestAllRfPermissions() }
@@ -153,12 +167,16 @@ class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
             triggerWifiScan()
             renderSnapshot()
         }
+        binding.btnTestCellData.setOnClickListener { runCellularDataTest() }
+        binding.btnTestOperatorCall.setOnClickListener { launchOperatorCallHelper() }
 
         binding.btnConnPass.setOnClickListener {
             val snap = SensorAndRFEngine.collectConnectivitySnapshot(
-                this, gnssVisible, gnssUsed, gnssConstellations, ttffSec
+                this, gnssVisible, gnssUsed, gnssConstellations, ttffSec, lastCellDataProbe
             )
             DiagnosticStore.connectivitySnapshot = snap
+            DiagnosticStore.persistSnapshotMeta()
+
             val badBaseband = snap.basebandVersion.contains("unknown", ignoreCase = true) ||
                 snap.basebandVersion.contains("missing", ignoreCase = true)
             if (badBaseband) {
@@ -169,6 +187,21 @@ class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
                 )
                 Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                 binding.tvConnCellDetails.text = "$msg\n\n${binding.tvConnCellDetails.text}"
+                return@setOnClickListener
+            }
+            if (snap.hasDualSimSplitBlock) {
+                val msg = Lang.t(
+                    this,
+                    "PERINGATAN: Salah satu slot SIM terpasang kartu tapi NO SERVICE / terblokir IMEI!",
+                    "WARNING: One SIM slot is inserted with NO SERVICE (possible split IMEI block)!"
+                )
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                DiagnosticStore.updateItem(
+                    "connectivity_rf",
+                    TestStatus.WARN,
+                    "WARN: Split Dual-SIM Block! SIM1=${snap.sim1Details} | SIM2=${snap.sim2Details}"
+                )
+                CodWizardFlow.advanceOrFinish(this)
                 return@setOnClickListener
             }
             val simInserted = snap.sim1State == "SIM READY" || snap.sim2State == "SIM READY"
@@ -190,23 +223,72 @@ class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
             DiagnosticStore.updateItem(
                 "connectivity_rf",
                 TestStatus.PASS,
-                "Baseband=${snap.basebandVersion.take(22)} | ${snap.serviceStateLabel} | SIM1=${snap.sim1State} | GNSS=${snap.gnssUsedCount}/${snap.gnssVisibleCount}"
+                "Baseband=${snap.basebandVersion.take(20)} | ${snap.serviceStateLabel} | GNSS=${snap.gnssUsedCount}/${snap.gnssVisibleCount}"
             )
             CodWizardFlow.advanceOrFinish(this)
         }
+
         binding.btnConnFail.setOnClickListener {
             val snap = SensorAndRFEngine.collectConnectivitySnapshot(
-                this, gnssVisible, gnssUsed, gnssConstellations, ttffSec
+                this, gnssVisible, gnssUsed, gnssConstellations, ttffSec, lastCellDataProbe
             )
+            DiagnosticStore.connectivitySnapshot = snap
+            DiagnosticStore.persistSnapshotMeta()
             DiagnosticStore.updateItem(
                 "connectivity_rf",
                 TestStatus.FAIL,
-                "FAIL: Baseband=${snap.basebandVersion} | State=${snap.serviceStateLabel} | SIM1=${snap.sim1State} | Wi-Fi=${snap.wifiSupported}"
+                "FAIL: Baseband=${snap.basebandVersion} | State=${snap.serviceStateLabel} | SIM1=${snap.sim1Details} | Wi-Fi=${snap.wifiSupported}"
             )
             CodWizardFlow.advanceOrFinish(this)
         }
 
         renderSnapshot()
+    }
+
+    private fun runCellularDataTest() {
+        binding.btnTestCellData.isEnabled = false
+        binding.tvCellDataProbeResult.visibility = View.VISIBLE
+        binding.tvCellDataProbeResult.setTextColor(ContextCompat.getColor(this, R.color.accent_amber_text))
+        binding.tvCellDataProbeResult.text = Lang.t(
+            this,
+            "Menguji koneksi paket data melalui modem SIM (bypass Wi-Fi)...",
+            "Testing direct cellular modem SIM packet reachability..."
+        )
+        probeExecutor.execute {
+            val (ok, msg) = SensorAndRFEngine.runCellularDataProbe(applicationContext)
+            runOnUiThread {
+                if (isDestroyed || isFinishing) return@runOnUiThread
+                binding.btnTestCellData.isEnabled = true
+                lastCellDataProbe = msg
+                binding.tvCellDataProbeResult.text = msg
+                binding.tvCellDataProbeResult.setTextColor(
+                    ContextCompat.getColor(
+                        this@ConnectivityTestActivity,
+                        if (ok) R.color.status_pass_fg else R.color.status_warn_fg
+                    )
+                )
+                renderSnapshot()
+            }
+        }
+    }
+
+    private fun launchOperatorCallHelper() {
+        val snap = DiagnosticStore.connectivitySnapshot
+        val (ussd, desc) = OemDeviceHelper.getOperatorCheckUssd(snap?.operatorName.orEmpty())
+        try {
+            val uri = if (ussd.isNotEmpty()) {
+                Uri.fromParts("tel", ussd, null)
+            } else {
+                Uri.parse("tel:")
+            }
+            startActivity(Intent(Intent.ACTION_DIAL, uri))
+            Toast.makeText(
+                this,
+                Lang.t(this, "Tekan Call di Dialer untuk tes suara telepon & proximity ($desc).", "Tap Call in Dialer to verify voice call & earpiece."),
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (_: Throwable) {
+        }
     }
 
     private fun requestAllRfPermissions() {
@@ -283,16 +365,19 @@ class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
 
     private fun renderSnapshot() {
         val snap = SensorAndRFEngine.collectConnectivitySnapshot(
-            this, gnssVisible, gnssUsed, gnssConstellations, ttffSec
+            this, gnssVisible, gnssUsed, gnssConstellations, ttffSec, lastCellDataProbe
         )
         DiagnosticStore.connectivitySnapshot = snap
 
         binding.tvConnCellDetails.text = buildString {
             appendLine("Baseband : ${snap.basebandVersion}")
             appendLine("Service  : ${snap.serviceStateLabel} (InService=${snap.isCellularInService})")
-            appendLine("SIM Slots: ${snap.simSlotCount} | SIM1: ${snap.sim1State} | SIM2: ${snap.sim2State}")
+            appendLine("SIM 1    : ${snap.sim1Details.ifEmpty { snap.sim1State }}")
+            appendLine("SIM 2    : ${snap.sim2Details.ifEmpty { snap.sim2State }}")
             appendLine("Carrier  : ${snap.operatorName} | Net: ${snap.networkType}")
-            if ((snap.sim1State == "SIM READY" || snap.sim2State == "SIM READY") && !snap.isCellularInService && snap.serviceStateLabel != "Perm Required") {
+            if (snap.hasDualSimSplitBlock) {
+                appendLine("[ALERT: SALAH SATU SLOT SIM TERBLOKIR / NO SERVICE!]")
+            } else if ((snap.sim1State == "SIM READY" || snap.sim2State == "SIM READY") && !snap.isCellularInService && snap.serviceStateLabel != "Perm Required") {
                 appendLine("[ALERT: SIM TERDETEKSI TAPI TIDAK ADA LAYANAN - CEK IMEI KEMENPERIN / RF!]")
             }
             append("Signal   : ${snap.signalDbm?.let { "$it dBm" } ?: "N/A (Grant Location/SIM)"}")
@@ -335,6 +420,11 @@ class ConnectivityTestActivity : AppCompatActivity(), LocationListener {
         } catch (_: Throwable) {
         }
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        probeExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

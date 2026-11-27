@@ -1,6 +1,7 @@
 package com.sanepo.unitcheck.ui
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
@@ -12,6 +13,7 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -31,6 +33,7 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -38,6 +41,10 @@ class AudioTestActivity : AppCompatActivity() {
 
     private enum class OutputChannel {
         EARPIECE, LOUDSPEAKER_BOTH, STEREO_LEFT, STEREO_RIGHT
+    }
+
+    private enum class MicRole {
+        PRIMARY_BOTTOM, SECONDARY_TOP, EXPRESS_AUTO_LOOPBACK
     }
 
     private lateinit var binding: ActivityAudioTestBinding
@@ -48,20 +55,25 @@ class AudioTestActivity : AppCompatActivity() {
     private var isWorking = false
     @Volatile
     private var recordedPcm: ShortArray? = null
-    private var pendingMicSource: Int? = null
+    @Volatile
+    private var recordedSampleRate = 44100
+    @Volatile
+    private var recordedPeak = 0
+    private var pendingMicRole: MicRole? = null
     private var lastActionLabel = "Ready"
 
     private var speakerTested = false
     private var micTested = false
     private var hapticTested = false
+    private var savedMediaVolume: Int? = null
 
     private val micPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        val src = pendingMicSource
-        pendingMicSource = null
-        if (granted && src != null) {
-            startMicRecording(src)
+        val role = pendingMicRole
+        pendingMicRole = null
+        if (granted && role != null) {
+            startMicRecording(role)
         } else {
             binding.tvAudioStatus.text = Lang.t(
                 this,
@@ -92,8 +104,13 @@ class AudioTestActivity : AppCompatActivity() {
         binding.tvAudioTitle.text = Lang.t(this, "Audio Stereo, Dual-Mic & Haptics", "Stereo Audio, Dual-Mic & Haptics")
         binding.tvAudioStatus.text = Lang.t(
             this,
-            "Siap: uji Earpiece, Speaker Kiri/Kanan, rekam Dual-Mic, dan Getar.",
-            "Ready: test Earpiece, Stereo L/R speakers, Dual-Mic loopback & Haptics."
+            "Siap: klik TES KILAT LOOPBACK (rekam -> langsung bunyi keras + getar) atau uji satu per satu.",
+            "Ready: tap QUICK LOOPBACK (record -> auto loud playback + haptic) or test individually."
+        )
+        binding.btnQuickLoopback.text = Lang.t(
+            this,
+            "TES KILAT COD: REKAM 2 DETIK -> OTOMATIS BUNYI + GETAR",
+            "QUICK COD LOOPBACK: 2s RECORD -> AUTO PLAYBACK + HAPTIC"
         )
         binding.tvSecSpeakers.text = Lang.t(this, "1. EARPIECE & LOUDSPEAKER STEREO (200Hz -> 1kHz)", "1. EARPIECE & STEREO SPEAKERS (200Hz -> 1kHz)")
         binding.btnEarpieceTone.text = Lang.t(this, "EARPIECE ATAS", "TOP EARPIECE")
@@ -101,10 +118,10 @@ class AudioTestActivity : AppCompatActivity() {
         binding.btnSpeakerLeft.text = Lang.t(this, "STEREO KIRI (L)", "STEREO LEFT (L)")
         binding.btnSpeakerRight.text = Lang.t(this, "STEREO KANAN (R)", "STEREO RIGHT (R)")
 
-        binding.tvSecMics.text = Lang.t(this, "2. REKAM DUAL-MIC (3 DETIK)", "2. DUAL-MIC LOOPBACK RECORD (3 SEC)")
-        binding.btnRecPrimaryMic.text = Lang.t(this, "MIC UTAMA (BAWAH)", "PRIMARY MIC")
-        binding.btnRecSecondaryMic.text = Lang.t(this, "MIC SEKUNDER (ATAS)", "SECONDARY MIC")
-        binding.btnPlaybackMic.text = Lang.t(this, "PUTAR ULANG HASIL REKAMAN", "PLAYBACK RECORDED AUDIO")
+        binding.tvSecMics.text = Lang.t(this, "2. REKAM DUAL-MIC (AUTO-GAIN LAPANGAN)", "2. DUAL-MIC RECORDING (AUTO-GAIN BOOST)")
+        binding.btnRecPrimaryMic.text = Lang.t(this, "MIC UTAMA (BAWAH 3s)", "PRIMARY MIC (3s)")
+        binding.btnRecSecondaryMic.text = Lang.t(this, "MIC SEKUNDER (ATAS 3s)", "SECONDARY MIC (3s)")
+        binding.btnPlaybackMic.text = Lang.t(this, "PUTAR ULANG HASIL REKAMAN (LOUD)", "PLAYBACK RECORDED AUDIO (BOOSTED)")
 
         binding.tvSecHaptics.text = Lang.t(this, "3. MOTOR GETAR / HAPTICS", "3. VIBRATION / HAPTIC MOTOR")
         binding.btnVibeShort.text = Lang.t(this, "GETAR PENDEK", "SHORT PULSE")
@@ -114,12 +131,13 @@ class AudioTestActivity : AppCompatActivity() {
         binding.btnAudioFail.text = Lang.t(this, "ADA MINUS / FAIL", "AUDIO / MIC FAIL")
 
         binding.btnBackAudio.setOnClickListener { finish() }
+        binding.btnQuickLoopback.setOnClickListener { requestMicAndRecord(MicRole.EXPRESS_AUTO_LOOPBACK) }
         binding.btnEarpieceTone.setOnClickListener { playTestSweep(OutputChannel.EARPIECE) }
         binding.btnSpeakerTone.setOnClickListener { playTestSweep(OutputChannel.LOUDSPEAKER_BOTH) }
         binding.btnSpeakerLeft.setOnClickListener { playTestSweep(OutputChannel.STEREO_LEFT) }
         binding.btnSpeakerRight.setOnClickListener { playTestSweep(OutputChannel.STEREO_RIGHT) }
-        binding.btnRecPrimaryMic.setOnClickListener { requestMicAndRecord(MediaRecorder.AudioSource.MIC) }
-        binding.btnRecSecondaryMic.setOnClickListener { requestMicAndRecord(MediaRecorder.AudioSource.CAMCORDER) }
+        binding.btnRecPrimaryMic.setOnClickListener { requestMicAndRecord(MicRole.PRIMARY_BOTTOM) }
+        binding.btnRecSecondaryMic.setOnClickListener { requestMicAndRecord(MicRole.SECONDARY_TOP) }
         binding.btnPlaybackMic.setOnClickListener { playbackRecordedPcm() }
         binding.btnVibeShort.setOnClickListener { triggerVibration(pattern = false) }
         binding.btnVibePattern.setOnClickListener { triggerVibration(pattern = true) }
@@ -128,13 +146,13 @@ class AudioTestActivity : AppCompatActivity() {
             val hasVibe = resolveVibrator()?.hasVibrator() == true
             val missing = ArrayList<String>()
             if (!speakerTested) missing.add("Speaker/Earpiece")
-            if (!micTested) missing.add("Mic Record")
+            if (!micTested) missing.add("Mic Nyata (Peak>=150)")
             if (hasVibe && !hapticTested) missing.add("Haptics")
             if (missing.isNotEmpty()) {
                 val msg = Lang.t(
                     this,
-                    "Uji dulu sebelum PASS: ${missing.joinToString(", ")}",
-                    "Run before PASS: ${missing.joinToString(", ")}"
+                    "Uji dulu hingga suara/mic terbaca sebelum PASS: ${missing.joinToString(", ")}",
+                    "Verify active output before PASS: ${missing.joinToString(", ")}"
                 )
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 binding.tvAudioStatus.text = msg
@@ -143,7 +161,7 @@ class AudioTestActivity : AppCompatActivity() {
             DiagnosticStore.updateItem(
                 "audio_haptics",
                 TestStatus.PASS,
-                "Earpiece/Stereo L-R, Dual-Mic & Haptics verified ($lastActionLabel)"
+                "Audio, Dual-Mic (Peak=$recordedPeak) & Haptics verified ($lastActionLabel)"
             )
             CodWizardFlow.advanceOrFinish(this)
         }
@@ -151,7 +169,7 @@ class AudioTestActivity : AppCompatActivity() {
             DiagnosticStore.updateItem(
                 "audio_haptics",
                 TestStatus.FAIL,
-                "FAIL flagged by technician ($lastActionLabel)"
+                "FAIL: Audio / Mic / Earpiece / Vibrator defect ($lastActionLabel, Peak=$recordedPeak)"
             )
             CodWizardFlow.advanceOrFinish(this)
         }
@@ -161,7 +179,7 @@ class AudioTestActivity : AppCompatActivity() {
         val nextGen = workerGenerationId.incrementAndGet()
         isWorking = false
         try {
-            workerThread?.join(350)
+            workerThread?.join(450)
         } catch (_: Throwable) {
         }
         workerThread = null
@@ -171,19 +189,40 @@ class AudioTestActivity : AppCompatActivity() {
         return nextGen
     }
 
+    private fun ensureAudibleVolume(streamType: Int): String {
+        return try {
+            val maxVol = audioManager.getStreamMaxVolume(streamType).coerceAtLeast(1)
+            val curVol = audioManager.getStreamVolume(streamType)
+            if (streamType == AudioManager.STREAM_MUSIC && savedMediaVolume == null) {
+                savedMediaVolume = curVol
+            }
+            if (curVol < (maxVol * 0.6f).roundToInt()) {
+                val target = (maxVol * 0.85f).roundToInt().coerceAtLeast(1)
+                audioManager.setStreamVolume(streamType, target, 0)
+                val now = audioManager.getStreamVolume(streamType)
+                "Vol ${(now * 100) / maxVol}%"
+            } else {
+                "Vol ${(curVol * 100) / maxVol}%"
+            }
+        } catch (_: Throwable) {
+            "Vol Restricted"
+        }
+    }
+
     private fun restoreAudioRouting() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audioManager.clearCommunicationDevice()
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = false
             }
-            @Suppress("DEPRECATION")
-            audioManager.isSpeakerphoneOn = false
             audioManager.mode = AudioManager.MODE_NORMAL
         } catch (_: Throwable) {
         }
     }
 
-    private fun applyEarpieceRouting() {
+    private fun applyEarpieceRouting(track: AudioTrack? = null) {
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val earpiece = audioManager.availableCommunicationDevices
@@ -194,16 +233,57 @@ class AudioTestActivity : AppCompatActivity() {
         } else {
             @Suppress("DEPRECATION")
             audioManager.isSpeakerphoneOn = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && track != null) {
+                val earpiece = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+                if (earpiece != null) track.preferredDevice = earpiece
+            }
         }
     }
 
-    private fun applySpeakerRouting() {
+    private fun applySpeakerRouting(track: AudioTrack? = null) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             audioManager.clearCommunicationDevice()
         }
         audioManager.mode = AudioManager.MODE_NORMAL
-        @Suppress("DEPRECATION")
-        audioManager.isSpeakerphoneOn = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && track != null) {
+            val builtinSpeaker = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            if (builtinSpeaker != null) {
+                track.preferredDevice = builtinSpeaker
+            }
+        }
+    }
+
+    private fun playStaticPcmAndDrain(
+        track: AudioTrack,
+        pcm: ShortArray,
+        sampleRate: Int,
+        channelCount: Int,
+        myGen: Long
+    ) {
+        val written = track.write(pcm, 0, pcm.size)
+        val totalFrames = (if (written > 0) written else pcm.size) / channelCount
+        val durationMs = ((totalFrames * 1000L) / sampleRate).coerceAtLeast(300L)
+        track.play()
+
+        val startMs = SystemClock.elapsedRealtime()
+        val deadlineMs = startMs + durationMs + 500L
+        while (isWorking && myGen == workerGenerationId.get()) {
+            val head = try {
+                track.playbackHeadPosition
+            } catch (_: Throwable) {
+                totalFrames
+            }
+            if (head >= totalFrames - 256 || SystemClock.elapsedRealtime() >= deadlineMs) {
+                break
+            }
+            try {
+                Thread.sleep(35L)
+            } catch (_: InterruptedException) {
+                break
+            }
+        }
     }
 
     private fun playTestSweep(channel: OutputChannel) {
@@ -218,18 +298,18 @@ class AudioTestActivity : AppCompatActivity() {
             OutputChannel.STEREO_LEFT -> "Stereo Left (L)"
             OutputChannel.STEREO_RIGHT -> "Stereo Right (R)"
         }
+        val streamType = if (useEarpiece) AudioManager.STREAM_VOICE_CALL else AudioManager.STREAM_MUSIC
+        val volInfo = ensureAudibleVolume(streamType)
         binding.tvAudioStatus.text = when (channel) {
-            OutputChannel.EARPIECE -> Lang.t(this, "Memutar nada 200Hz->1kHz di EARPIECE ATAS (tempel ke telinga)...", "Playing phase-smooth sweep via TOP EARPIECE...")
-            OutputChannel.LOUDSPEAKER_BOTH -> Lang.t(this, "Memutar nada 200Hz->1kHz di LOUDSPEAKER...", "Playing phase-smooth sweep via LOUDSPEAKER...")
-            OutputChannel.STEREO_LEFT -> Lang.t(this, "Memutar di SPEAKER KIRI / ATAS (Channel L)...", "Playing ONLY Left stereo channel (L)...")
-            OutputChannel.STEREO_RIGHT -> Lang.t(this, "Memutar di SPEAKER KANAN / BAWAH (Channel R)...", "Playing ONLY Right stereo channel (R)...")
+            OutputChannel.EARPIECE -> Lang.t(this, "Memutar nada 200Hz->1kHz di EARPIECE ATAS ($volInfo)...", "Playing sweep via TOP EARPIECE ($volInfo)...")
+            OutputChannel.LOUDSPEAKER_BOTH -> Lang.t(this, "Memutar nada 200Hz->1kHz di LOUDSPEAKER ($volInfo)...", "Playing sweep via LOUDSPEAKER ($volInfo)...")
+            OutputChannel.STEREO_LEFT -> Lang.t(this, "Memutar di SPEAKER KIRI / ATAS (L) ($volInfo)...", "Playing ONLY Left channel (L) ($volInfo)...")
+            OutputChannel.STEREO_RIGHT -> Lang.t(this, "Memutar di SPEAKER KANAN / BAWAH (R) ($volInfo)...", "Playing ONLY Right channel (R) ($volInfo)...")
         }
 
         workerThread = Thread {
             var track: AudioTrack? = null
             try {
-                if (useEarpiece) applyEarpieceRouting() else applySpeakerRouting()
-
                 val sampleRate = 44100
                 val frames = sampleRate * 2
                 val fadeSamples = (sampleRate * 0.020).toInt().coerceAtLeast(1)
@@ -245,7 +325,7 @@ class AudioTestActivity : AppCompatActivity() {
                         i >= frames - fadeSamples -> 0.5 * (1.0 - cos(PI * (frames - 1 - i) / fadeSamples))
                         else -> 1.0
                     }
-                    val sample = (sin(phase) * env * 25000.0).toInt().toShort()
+                    val sample = (sin(phase) * env * 27000.0).toInt().toShort()
                     if (!isStereo) {
                         pcm[i] = sample
                     } else if (channel == OutputChannel.STEREO_LEFT) {
@@ -258,12 +338,6 @@ class AudioTestActivity : AppCompatActivity() {
                 }
 
                 val channelMask = if (isStereo) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
-                val bufBytes = AudioTrack.getMinBufferSize(
-                    sampleRate,
-                    channelMask,
-                    AudioFormat.ENCODING_PCM_16BIT
-                ).coerceAtLeast(4096)
-
                 val usage = if (useEarpiece) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_MEDIA
                 val contentType = if (useEarpiece) AudioAttributes.CONTENT_TYPE_SPEECH else AudioAttributes.CONTENT_TYPE_MUSIC
 
@@ -281,25 +355,20 @@ class AudioTestActivity : AppCompatActivity() {
                             .setChannelMask(channelMask)
                             .build()
                     )
-                    .setBufferSizeInBytes(bufBytes)
-                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .setBufferSizeInBytes(pcm.size * 2)
+                    .setTransferMode(AudioTrack.MODE_STATIC)
                     .build()
 
-                track.play()
-                var offset = 0
-                val chunk = 2048
-                while (isWorking && myGen == workerGenerationId.get() && offset < pcm.size) {
-                    val toWrite = minOf(chunk, pcm.size - offset)
-                    track.write(pcm, offset, toWrite)
-                    offset += toWrite
-                }
+                if (useEarpiece) applyEarpieceRouting(track) else applySpeakerRouting(track)
+                playStaticPcmAndDrain(track, pcm, sampleRate, if (isStereo) 2 else 1, myGen)
+
                 if (myGen == workerGenerationId.get()) {
                     runOnUiThread {
                         if (!isDestroyed) {
                             binding.tvAudioStatus.text = Lang.t(
                                 this,
-                                "Selesai putar $lastActionLabel. Pastikan jernih tanpa sember.",
-                                "Finished $lastActionLabel sweep. Verify clarity and no rattle."
+                                "Selesai putar $lastActionLabel ($volInfo). Pastikan jernih tanpa sember.",
+                                "Finished $lastActionLabel ($volInfo). Verify clarity and no rattle."
                             )
                         }
                     }
@@ -310,6 +379,8 @@ class AudioTestActivity : AppCompatActivity() {
                 }
             } finally {
                 try {
+                    track?.pause()
+                    track?.flush()
                     track?.stop()
                     track?.release()
                 } catch (_: Throwable) {
@@ -322,63 +393,132 @@ class AudioTestActivity : AppCompatActivity() {
         }.also { it.start() }
     }
 
-    private fun requestMicAndRecord(source: Int) {
+    private fun requestMicAndRecord(role: MicRole) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            pendingMicSource = source
+            pendingMicRole = role
             micPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
             return
         }
-        startMicRecording(source)
+        startMicRecording(role)
     }
 
-    private fun startMicRecording(source: Int) {
+    @SuppressLint("MissingPermission")
+    private fun createRecorderForRole(role: MicRole, sampleRate: Int): Pair<AudioRecord?, String> {
+        val sources = when (role) {
+            MicRole.PRIMARY_BOTTOM, MicRole.EXPRESS_AUTO_LOOPBACK ->
+                intArrayOf(MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.VOICE_RECOGNITION)
+            MicRole.SECONDARY_TOP ->
+                intArrayOf(MediaRecorder.AudioSource.CAMCORDER, MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.MIC)
+        }
+
+        var preferredInput: AudioDeviceInfo? = null
+        var micNote = ""
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                .filter { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
+            if (role == MicRole.SECONDARY_TOP) {
+                preferredInput = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    inputs.firstOrNull { dev ->
+                        val addr = dev.address.lowercase()
+                        addr.contains("back") || addr.contains("top") || addr.contains("sec") || addr.contains("rear")
+                    }
+                } else {
+                    null
+                } ?: if (inputs.size >= 2) inputs[1] else inputs.firstOrNull()
+                if (inputs.size <= 1) {
+                    micNote = " [1 Built-In Mic Reported by HAL]"
+                }
+            } else {
+                preferredInput = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    inputs.firstOrNull { dev ->
+                        dev.address.lowercase().contains("bottom")
+                    }
+                } else {
+                    null
+                } ?: inputs.firstOrNull()
+            }
+        }
+
+        val minBuf = AudioRecord.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        ).coerceAtLeast(4096)
+
+        for (src in sources) {
+            try {
+                val rec = AudioRecord(
+                    src,
+                    sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    minBuf * 2
+                )
+                if (rec.state == AudioRecord.STATE_INITIALIZED) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && preferredInput != null) {
+                        rec.preferredDevice = preferredInput
+                    }
+                    return Pair(rec, micNote)
+                }
+                rec.release()
+            } catch (_: Throwable) {
+            }
+        }
+        return Pair(null, micNote)
+    }
+
+    private fun startMicRecording(role: MicRole) {
         stopCurrentWorker()
         val myGen = workerGenerationId.incrementAndGet()
         isWorking = true
         binding.audioMeterView.resetPeak()
-        val label = if (source == MediaRecorder.AudioSource.MIC) "Primary Mic" else "Secondary/Camcorder Mic"
+
+        val durationSec = if (role == MicRole.EXPRESS_AUTO_LOOPBACK) 2 else 3
+        val label = when (role) {
+            MicRole.PRIMARY_BOTTOM -> "Mic Utama (Bawah)"
+            MicRole.SECONDARY_TOP -> "Mic Sekunder (Atas)"
+            MicRole.EXPRESS_AUTO_LOOPBACK -> "Loopback Kilat COD"
+        }
         lastActionLabel = label
         binding.tvAudioStatus.text = Lang.t(
             this,
-            "Merekam 3 detik dari $label... Bicara dekat lubang mic.",
-            "Recording 3.0s from $label... Speak near the mic hole."
+            "Merekam ${durationSec}s dari $label... Bicara dekat lubang mic sekarang!",
+            "Recording ${durationSec}s via $label... Speak clearly into the mic now!"
         )
 
         workerThread = Thread {
             var recorder: AudioRecord? = null
             try {
-                val sampleRate = 16000
-                val minBuf = AudioRecord.getMinBufferSize(
-                    sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT
-                ).coerceAtLeast(2048)
-
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) !=
                     PackageManager.PERMISSION_GRANTED
                 ) {
                     runOnUiThread { binding.tvAudioStatus.text = "ERROR: RECORD_AUDIO permission required." }
                     return@Thread
                 }
-                recorder = AudioRecord(
-                    source,
-                    sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    minBuf * 2
-                )
-                if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+
+                var chosenRate = 44100
+                var micHardwareNote = ""
+                for (candidateRate in intArrayOf(44100, 48000, 16000)) {
+                    val created = createRecorderForRole(role, candidateRate)
+                    if (created.first != null) {
+                        recorder = created.first
+                        micHardwareNote = created.second
+                        chosenRate = candidateRate
+                        break
+                    }
+                }
+                if (recorder == null) {
                     runOnUiThread {
                         binding.tvAudioStatus.text = "ERROR: $label AudioRecord failed to initialize on this ROM."
                     }
                     return@Thread
                 }
 
-                val maxSamples = sampleRate * 3
+                val maxSamples = chosenRate * durationSec
                 val outBuf = ShortArray(maxSamples)
-                val readBuf = ShortArray(1024)
+                val readBuf = ShortArray(2048)
                 var totalRead = 0
                 var maxPeak = 0
 
@@ -396,23 +536,75 @@ class AudioTestActivity : AppCompatActivity() {
                         sumSq += readBuf[i].toDouble() * readBuf[i].toDouble()
                     }
                     val rms = sqrt(sumSq / n)
-                    val levelFrac = (rms / 12000.0).toFloat().coerceIn(0f, 1f)
+                    val levelFrac = (rms / 7500.0).toFloat().coerceIn(0f, 1f)
                     if (myGen == workerGenerationId.get()) {
                         runOnUiThread {
                             if (!isDestroyed) binding.audioMeterView.setLevel(levelFrac)
                         }
                     }
                 }
+
+                try {
+                    recorder.stop()
+                    recorder.release()
+                } catch (_: Throwable) {
+                }
+                recorder = null
+
                 if (myGen == workerGenerationId.get()) {
-                    recordedPcm = outBuf.copyOf(totalRead)
+                    val captured = outBuf.copyOf(totalRead)
+                    recordedPcm = captured
+                    recordedSampleRate = chosenRate
+                    recordedPeak = maxPeak
+
+                    if (maxPeak < 150 || totalRead < chosenRate / 3) {
+                        micTested = false
+                        runOnUiThread {
+                            if (!isDestroyed) {
+                                binding.tvAudioStatus.text = Lang.t(
+                                    this,
+                                    "GAGAL $label: Tidak ada suara masuk (Peak=$maxPeak < 150)! Cek mic tersumbat/mati atau bicara lebih dekat.$micHardwareNote",
+                                    "FAILED $label: Zero/dead signal (Peak=$maxPeak < 150)! Mic blocked/dead or speak louder.$micHardwareNote"
+                                )
+                            }
+                        }
+                        return@Thread
+                    }
+
                     micTested = true
-                    runOnUiThread {
-                        if (!isDestroyed) {
-                            binding.tvAudioStatus.text = Lang.t(
-                                this,
-                                "Rekaman $label selesai (Peak=$maxPeak). Klik PUTAR ULANG untuk dengarkan.",
-                                "$label recorded (Peak=$maxPeak). Tap PLAYBACK to inspect clarity."
-                            )
+                    if (role == MicRole.EXPRESS_AUTO_LOOPBACK) {
+                        runOnUiThread {
+                            if (!isDestroyed) {
+                                binding.tvAudioStatus.text = Lang.t(
+                                    this,
+                                    "Suara tertangkap (Peak=$maxPeak)! Memutar ulang ke speaker + tes getar...",
+                                    "Captured (Peak=$maxPeak)! Playing back loudly + vibration..."
+                                )
+                            }
+                        }
+                        playAmplifiedPcmBlocking(captured, chosenRate, maxPeak, myGen)
+                        if (myGen == workerGenerationId.get()) {
+                            speakerTested = true
+                            runOnUiThread {
+                                if (!isDestroyed) {
+                                    triggerVibration(pattern = false)
+                                    binding.tvAudioStatus.text = Lang.t(
+                                        this,
+                                        "TES KILAT SELESAI: Mic Peak=$maxPeak -> Speaker + Getar aktif!",
+                                        "QUICK LOOPBACK DONE: Mic Peak=$maxPeak -> Speaker + Haptic fired!"
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        runOnUiThread {
+                            if (!isDestroyed) {
+                                binding.tvAudioStatus.text = Lang.t(
+                                    this,
+                                    "Rekaman $label OK (Peak=$maxPeak @ ${chosenRate}Hz)$micHardwareNote. Klik PUTAR ULANG untuk dengar keras.",
+                                    "$label OK (Peak=$maxPeak @ ${chosenRate}Hz)$micHardwareNote. Tap PLAYBACK to inspect."
+                                )
+                            }
                         }
                     }
                 }
@@ -427,10 +619,72 @@ class AudioTestActivity : AppCompatActivity() {
                 } catch (_: Throwable) {
                 }
                 if (myGen == workerGenerationId.get()) {
+                    restoreAudioRouting()
                     isWorking = false
                 }
             }
         }.also { it.start() }
+    }
+
+    private fun buildNormalizedLoudPcm(raw: ShortArray, peak: Int): ShortArray {
+        val safePeak = peak.coerceAtLeast(1)
+        // Boost quiet outdoor COD speech toward 25,000 amplitude (capped at 12x to avoid harsh static floor hiss).
+        val gain = (25000f / safePeak.toFloat()).coerceIn(1.0f, 12.0f)
+        val out = ShortArray(raw.size)
+        for (i in raw.indices) {
+            val boosted = (raw[i] * gain).roundToInt().coerceIn(-32767, 32767)
+            out[i] = boosted.toShort()
+        }
+        return out
+    }
+
+    private fun playAmplifiedPcmBlocking(raw: ShortArray, sampleRate: Int, peak: Int, myGen: Long) {
+        if (raw.isEmpty()) return
+        val amplified = buildNormalizedLoudPcm(raw, peak)
+        val volInfo = ensureAudibleVolume(AudioManager.STREAM_MUSIC)
+        var track: AudioTrack? = null
+        try {
+            track = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(amplified.size * 2)
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .build()
+
+            applySpeakerRouting(track)
+            speakerTested = true
+            playStaticPcmAndDrain(track, amplified, sampleRate, 1, myGen)
+            if (myGen == workerGenerationId.get()) {
+                runOnUiThread {
+                    if (!isDestroyed) {
+                        binding.tvAudioStatus.text = Lang.t(
+                            this,
+                            "Putar ulang selesai ($volInfo, Peak=$peak). Pastikan suara jernih di speaker.",
+                            "Playback finished ($volInfo, Peak=$peak). Verify speaker voice clarity."
+                        )
+                    }
+                }
+            }
+        } finally {
+            try {
+                track?.pause()
+                track?.flush()
+                track?.stop()
+                track?.release()
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     private fun playbackRecordedPcm() {
@@ -438,61 +692,38 @@ class AudioTestActivity : AppCompatActivity() {
         if (pcm == null || pcm.isEmpty()) {
             binding.tvAudioStatus.text = Lang.t(
                 this,
-                "Belum ada rekaman. Tekan MIC UTAMA atau MIC SEKUNDER dulu.",
-                "No recording yet. Record Primary or Secondary Mic first."
+                "Belum ada rekaman. Tekan MIC UTAMA / SEKUNDER atau TES KILAT dulu.",
+                "No recording yet. Record Mic or Quick Loopback first."
+            )
+            return
+        }
+        if (recordedPeak < 150) {
+            binding.tvAudioStatus.text = Lang.t(
+                this,
+                "Rekaman sebelumnya kosong/bisu (Peak=$recordedPeak). Rekam ulang dengan bicara lebih dekat!",
+                "Previous recording was silent (Peak=$recordedPeak). Re-record closer to mic!"
             )
             return
         }
         stopCurrentWorker()
         val myGen = workerGenerationId.incrementAndGet()
         isWorking = true
-        binding.tvAudioStatus.text = Lang.t(this, "Memutar ulang rekaman mic via loudspeaker...", "Playing back recorded mic audio...")
+        val rate = recordedSampleRate
+        val peak = recordedPeak
+        binding.tvAudioStatus.text = Lang.t(
+            this,
+            "Memutar rekaman mic (Auto-Gain Boost, Peak=$peak @ ${rate}Hz)...",
+            "Playing back mic recording (Auto-Gain Boost, Peak=$peak @ ${rate}Hz)..."
+        )
 
         workerThread = Thread {
-            var track: AudioTrack? = null
             try {
-                applySpeakerRouting()
-                val sampleRate = 16000
-                val bufBytes = AudioTrack.getMinBufferSize(
-                    sampleRate,
-                    AudioFormat.CHANNEL_OUT_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT
-                ).coerceAtLeast(2048)
-
-                track = AudioTrack.Builder()
-                    .setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                    )
-                    .setAudioFormat(
-                        AudioFormat.Builder()
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(sampleRate)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                            .build()
-                    )
-                    .setBufferSizeInBytes(bufBytes)
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .build()
-                track.play()
-                var offset = 0
-                while (isWorking && myGen == workerGenerationId.get() && offset < pcm.size) {
-                    val n = minOf(1024, pcm.size - offset)
-                    track.write(pcm, offset, n)
-                    offset += n
-                }
+                playAmplifiedPcmBlocking(pcm, rate, peak, myGen)
             } catch (t: Throwable) {
                 if (myGen == workerGenerationId.get()) {
                     runOnUiThread { binding.tvAudioStatus.text = "Playback error: ${t.message}" }
                 }
             } finally {
-                try {
-                    track?.stop()
-                    track?.release()
-                } catch (_: Throwable) {
-                }
                 if (myGen == workerGenerationId.get()) {
                     restoreAudioRouting()
                     isWorking = false
@@ -538,6 +769,13 @@ class AudioTestActivity : AppCompatActivity() {
 
     override fun onPause() {
         stopCurrentWorker()
+        savedMediaVolume?.let { orig ->
+            try {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, orig, 0)
+            } catch (_: Throwable) {
+            }
+            savedMediaVolume = null
+        }
         super.onPause()
     }
 

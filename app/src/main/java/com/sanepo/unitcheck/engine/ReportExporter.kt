@@ -13,6 +13,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.sanepo.unitcheck.model.DiagnosticStore
 import com.sanepo.unitcheck.model.TestStatus
+import com.sanepo.unitcheck.util.Lang
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -22,13 +23,27 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 object ReportExporter {
 
     private fun reportDir(context: Context): File {
         val dir = File(context.cacheDir, "reports")
         if (!dir.exists()) dir.mkdirs()
+        cleanupOldReports(dir)
         return dir
+    }
+
+    private fun cleanupOldReports(dir: File) {
+        try {
+            val cutoff = System.currentTimeMillis() - 86_400_000L
+            dir.listFiles()?.forEach { f ->
+                if (f.isFile && f.lastModified() in 1L until cutoff) {
+                    f.delete()
+                }
+            }
+        } catch (_: Throwable) {
+        }
     }
 
     private fun safeElapsedRealtimeMs(): Long {
@@ -37,6 +52,20 @@ object ReportExporter {
         } catch (_: Throwable) {
             0L
         }
+    }
+
+    fun formatStorageMarketingAndUsable(chipTotalBytes: Long, usableTotalBytes: Long): String {
+        val usableStr = formatBytes(usableTotalBytes)
+        if (chipTotalBytes <= 0L) return usableStr
+        val gb = (chipTotalBytes / 1_000_000_000.0).roundToInt()
+        val tierLabel = if (gb >= 1000 && gb % 1024 == 0) {
+            "${gb / 1024} TB"
+        } else if (gb >= 1000) {
+            "1 TB"
+        } else {
+            "$gb GB"
+        }
+        return "$tierLabel (Usable: $usableStr)"
     }
 
     fun computeVerifyHash(dateStr: String): String {
@@ -78,11 +107,7 @@ object ReportExporter {
                 appendLine("Bat: ${bat.levelPct}% ${bat.currentMa}mA ${bat.voltageMv}mV H=$h")
             }
             if (rf != null) {
-                appendLine("RF: ${rf.serviceStateLabel} | SIM1=${rf.sim1State} | BB=${rf.basebandVersion.take(16)}")
-            }
-            val p = DiagnosticStore.priceState
-            if (p.marketPriceIdr > 0L) {
-                appendLine("MaxBuy: Rp${formatIdr(p.maxSafeBuyPriceIdr)}")
+                appendLine("RF: ${rf.serviceStateLabel} | SIM1=${rf.sim1State} SIM2=${rf.sim2State} | BB=${rf.basebandVersion.take(16)}")
             }
             append(items.joinToString(" ") { "${it.id.take(5)}=${it.status.code}" })
         }
@@ -107,7 +132,7 @@ object ReportExporter {
         }
     }
 
-    fun buildTextReport(): String {
+    fun buildTextReport(useIndonesian: Boolean = true): String {
         val fp = DiagnosticStore.fingerprint
         val disp = DiagnosticStore.displaySpecs
         val bat = DiagnosticStore.batteryTelemetry
@@ -143,7 +168,8 @@ object ReportExporter {
             if (fp.cpuCoreClusters.isNotEmpty()) {
                 sb.appendLine("Clusters: ${fp.cpuCoreClusters.joinToString(" + ")}")
             }
-            sb.appendLine("RAM: ${formatBytes(fp.ramTotalBytes)} | Storage (${fp.storageType}): ${formatBytes(fp.storageTotalBytes)}")
+            val diskLabel = formatStorageMarketingAndUsable(fp.storageChipTotalBytes, fp.storageTotalBytes)
+            sb.appendLine("RAM: ${formatBytes(fp.ramTotalBytes)} | Storage (${fp.storageType}): $diskLabel")
             if (fp.storageReadMbps != null || fp.storageWriteMbps != null) {
                 sb.appendLine("Flash Bench: Read=${fp.storageReadMbps ?: 0f} MB/s | Write=${fp.storageWriteMbps ?: 0f} MB/s (${fp.storageBenchNote})")
             }
@@ -170,16 +196,16 @@ object ReportExporter {
             sb.appendLine("BATTERY STRESS (${stress.durationSec}s): Drop=${stress.voltageDropMv}mV (Min=${stress.minVoltageMv}mV), Pct ${stress.startLevelPct}%->${stress.endLevelPct}%, MaxTemp=${stress.maxTempCelsius}C [${if (stress.passed) "PASS" else "FAIL"}]")
         }
         if (rf != null) {
-            sb.appendLine("RF: Baseband=${rf.basebandVersion} | State=${rf.serviceStateLabel} | SIM1=${rf.sim1State} | SIM2=${rf.sim2State} | NFC=${rf.nfcStatus}")
-        }
-        val p = DiagnosticStore.priceState
-        if (p.marketPriceIdr > 0L) {
-            sb.appendLine("COD PRICING: Market=Rp${formatIdr(p.marketPriceIdr)} | TargetProfit=Rp${formatIdr(p.targetProfitIdr)} | Deductions=Rp${formatIdr(p.defectDeductionIdr)} => MAX SAFE BUY=Rp${formatIdr(p.maxSafeBuyPriceIdr)}")
+            sb.appendLine("RF: Baseband=${rf.basebandVersion} | State=${rf.serviceStateLabel} | SIM1=${rf.sim1Details.ifEmpty { rf.sim1State }} | SIM2=${rf.sim2Details.ifEmpty { rf.sim2State }} | NFC=${rf.nfcStatus}")
+            if (rf.cellularDataCheckSummary.isNotBlank()) {
+                sb.appendLine("CellDataTest: ${rf.cellularDataCheckSummary}")
+            }
         }
         sb.appendLine("----------------------------------------")
         sb.appendLine("MODULE VERDICTS")
         for (item in items) {
-            sb.appendLine("[${item.status.code}] ${item.titleEn}")
+            val title = if (useIndonesian) item.titleId else item.titleEn
+            sb.appendLine("[${item.status.code}] $title")
             if (item.summary.isNotBlank()) {
                 sb.appendLine("   -> ${item.summary}")
             }
@@ -218,6 +244,7 @@ object ReportExporter {
             fpJson.put("ramBytes", fp.ramTotalBytes)
             fpJson.put("storageType", fp.storageType)
             fpJson.put("storageBytes", fp.storageTotalBytes)
+            fpJson.put("storageChipTotalBytes", fp.storageChipTotalBytes)
             fpJson.put("storageReadMbps", fp.storageReadMbps)
             fpJson.put("storageWriteMbps", fp.storageWriteMbps)
             fpJson.put("storageBenchNote", fp.storageBenchNote)
@@ -251,6 +278,8 @@ object ReportExporter {
                 put("status", b.statusLabel)
                 put("plugged", b.pluggedLabel)
                 put("voltageMv", b.voltageMv)
+                put("perCellVoltageMv", b.perCellVoltageMv)
+                put("isDualCell", b.isDualCellPack)
                 put("currentMa", b.currentMa)
                 put("wattageW", b.wattageW)
                 put("tempCelsius", b.tempCelsius)
@@ -300,11 +329,15 @@ object ReportExporter {
                 put("simSlots", r.simSlotCount)
                 put("sim1State", r.sim1State)
                 put("sim2State", r.sim2State)
+                put("sim1Details", r.sim1Details)
+                put("sim2Details", r.sim2Details)
+                put("hasDualSimSplitBlock", r.hasDualSimSplitBlock)
                 put("serviceState", r.serviceStateLabel)
                 put("inService", r.isCellularInService)
                 put("operator", r.operatorName)
                 put("networkType", r.networkType)
                 put("signalDbm", r.signalDbm)
+                put("cellularDataTest", r.cellularDataCheckSummary)
                 put("wifi5Ghz", r.wifi5GhzSupported)
                 put("wifi6Ghz", r.wifi6GhzSupported)
                 put("nfcStatus", r.nfcStatus)
@@ -312,15 +345,6 @@ object ReportExporter {
                 put("gnssUsed", r.gnssUsedCount)
             })
         }
-
-        val p = DiagnosticStore.priceState
-        root.put("codPricing", JSONObject().apply {
-            put("marketPriceIdr", p.marketPriceIdr)
-            put("targetProfitIdr", p.targetProfitIdr)
-            put("defectDeductionIdr", p.defectDeductionIdr)
-            put("maxSafeBuyPriceIdr", p.maxSafeBuyPriceIdr)
-            put("note", p.customNote)
-        })
 
         val testsArray = JSONArray()
         for (item in DiagnosticStore.getItems()) {
@@ -362,7 +386,8 @@ object ReportExporter {
         }
 
         var y = 42f
-        val lines = buildTextReport().lines()
+        val isIndo = Lang.isIndonesian(context)
+        val lines = buildTextReport(isIndo).lines()
         canvas.drawText("SANEPO UNIT CHECK - VERIFIED HARDWARE REPORT", 36f, y, titlePaint)
         y += 22f
 
@@ -391,9 +416,18 @@ object ReportExporter {
     fun exportCardPngFile(context: Context): File {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val file = File(reportDir(context), "sanepo_card_$stamp.png")
+        val isIndo = Lang.isIndonesian(context)
+        val items = DiagnosticStore.getItems()
 
         val width = 1080
-        val height = 1620
+        // Measure dynamic canvas height so zero rows are truncated and QR never collides with text.
+        val fp = DiagnosticStore.fingerprint
+        val headerLinesCount = 2 + (if (fp != null) 4 else 0) + (if (DiagnosticStore.unitImeiNote.isNotBlank()) 1 else 0)
+        val moduleLines = items.sumOf { item ->
+            1 + if (item.summary.isNotBlank()) wrapLine(item.summary, 60).take(2).size else 0
+        }
+        val height = (220 + headerLinesCount * 36 + moduleLines * 32 + 340).coerceAtLeast(1560)
+
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         c.drawColor(Color.parseColor("#0A0C0E"))
@@ -446,46 +480,49 @@ object ReportExporter {
         c.drawText("TIMESTAMP: $dateStr | VERIFY: #$hash", 68f, y, accentPaint)
         y += 44f
 
-        val fp = DiagnosticStore.fingerprint
         if (fp != null) {
+            val diskLabel = formatStorageMarketingAndUsable(fp.storageChipTotalBytes, fp.storageTotalBytes)
             c.drawText("UNIT : ${fp.commercialName} [${fp.deviceCodename}]", 68f, y, monoPaint); y += 34f
             c.drawText("OS   : Android ${fp.androidVersion} | ${fp.socBrand} ${fp.socModel}", 68f, y, monoPaint); y += 34f
-            c.drawText("MEM  : RAM ${formatBytes(fp.ramTotalBytes)} | ${fp.storageType} ${formatBytes(fp.storageTotalBytes)}", 68f, y, monoPaint); y += 34f
+            c.drawText("MEM  : RAM ${formatBytes(fp.ramTotalBytes)} | ${fp.storageType} $diskLabel", 68f, y, monoPaint); y += 34f
             c.drawText("SEC  : BL=${fp.bootloaderLocked} | DRM=${fp.widevineLevel} | KG=${fp.knoxGuardState}", 68f, y, monoPaint); y += 34f
         }
         if (DiagnosticStore.unitImeiNote.isNotBlank()) {
-            c.drawText("IMEI : ${DiagnosticStore.unitImeiNote}", 68f, y, monoPaint); y += 34f
-        }
-        val p = DiagnosticStore.priceState
-        if (p.marketPriceIdr > 0L) {
-            c.drawText("MAX SAFE BUY: Rp ${formatIdr(p.maxSafeBuyPriceIdr)}", 68f, y, accentPaint); y += 38f
+            c.drawText("IMEI : ${DiagnosticStore.unitImeiNote.take(56)}", 68f, y, monoPaint); y += 34f
         }
 
         y += 14f
         c.drawLine(68f, y, width - 68f, y, borderPaint)
         y += 42f
 
-        for (item in DiagnosticStore.getItems()) {
+        for (item in items) {
             val stPaint = when (item.status) {
                 TestStatus.PASS -> passPaint
                 TestStatus.WARN -> warnPaint
                 TestStatus.FAIL -> failPaint
                 else -> monoPaint
             }
+            val title = (if (isIndo) item.titleId else item.titleEn).take(50)
             c.drawText("[${item.status.code}]", 68f, y, stPaint)
-            c.drawText(item.titleEn.take(44), 192f, y, monoPaint)
-            y += 34f
+            c.drawText(title, 192f, y, monoPaint)
+            y += 32f
             if (item.summary.isNotBlank()) {
-                c.drawText("  ${item.summary.take(64)}", 192f, y, monoPaint)
-                y += 30f
+                for (subLine in wrapLine(item.summary, 60).take(2)) {
+                    c.drawText("  $subLine", 192f, y, monoPaint)
+                    y += 28f
+                }
             }
-            if (y > height - 340f) break
+            y += 6f
         }
 
-        val qrBmp = generateQrBitmap(buildCompactQrPayload(), 260)
+        val qrBmp = generateQrBitmap(buildCompactQrPayload(), 240)
         if (qrBmp != null) {
-            c.drawBitmap(qrBmp, width - 310f, height - 310f, null)
-            c.drawText("SCAN QR VERIFY", width - 310f, height - 324f, accentPaint)
+            val qrX = width - 296f
+            val qrY = height - 296f
+            c.drawText("SCAN QR VERIFY", qrX, qrY - 14f, accentPaint)
+            c.drawText("Sanepo Unit Check | Ponorogo, ID", 68f, height - 76f, monoPaint)
+            c.drawBitmap(qrBmp, qrX, qrY, null)
+            qrBmp.recycle()
         }
 
         FileOutputStream(file).use { out ->

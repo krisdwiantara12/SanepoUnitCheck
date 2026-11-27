@@ -16,10 +16,9 @@ object DiagnosticStore {
     private const val KEY_SELLER = "seller_info"
     private const val KEY_IMEI = "imei_note"
     private const val KEY_INSPECTOR = "inspector_note"
-    private const val KEY_MARKET_PRICE = "market_price"
-    private const val KEY_TARGET_PROFIT = "target_profit"
-    private const val KEY_DEDUCTION = "defect_deduction"
-    private const val KEY_PRICE_NOTE = "price_note"
+    private const val KEY_DISPLAY_JSON = "display_specs_json"
+    private const val KEY_CONNECTIVITY_JSON = "connectivity_json"
+    private const val KEY_FP_META_JSON = "fingerprint_meta_json"
 
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val itemsMap = LinkedHashMap<String, DiagnosticItem>()
@@ -61,7 +60,10 @@ object DiagnosticStore {
     var unitImeiNote: String = ""
 
     @Volatile
-    var priceState: PriceCalculatorState = PriceCalculatorState()
+    var touchSamplingHzPeak: Float = 0f
+
+    @Volatile
+    var barometerSealResult: String = ""
 
     init {
         populateDefaultsLocked()
@@ -79,14 +81,8 @@ object DiagnosticStore {
         sellerInfo = prefs.getString(KEY_SELLER, "").orEmpty()
         unitImeiNote = prefs.getString(KEY_IMEI, "").orEmpty()
         inspectorNote = prefs.getString(KEY_INSPECTOR, "").orEmpty()
-        priceState = PriceCalculatorState(
-            marketPriceIdr = prefs.getLong(KEY_MARKET_PRICE, 0L),
-            targetProfitIdr = prefs.getLong(KEY_TARGET_PROFIT, 250_000L),
-            defectDeductionIdr = prefs.getLong(KEY_DEDUCTION, 0L),
-            customNote = prefs.getString(KEY_PRICE_NOTE, "").orEmpty()
-        )
-        val rawStress = prefs.getString(KEY_STRESS_JSON, null)
-        if (!rawStress.isNullOrBlank()) {
+
+        prefs.getString(KEY_STRESS_JSON, null)?.takeIf { it.isNotBlank() }?.let { rawStress ->
             try {
                 val sObj = JSONObject(rawStress)
                 batteryStressSummary = BatteryStressSummary(
@@ -103,6 +99,116 @@ object DiagnosticStore {
             } catch (_: Throwable) {
             }
         }
+
+        prefs.getString(KEY_DISPLAY_JSON, null)?.takeIf { it.isNotBlank() }?.let { rawDisp ->
+            try {
+                val d = JSONObject(rawDisp)
+                displaySpecs = DisplaySpecSummary(
+                    widthPx = d.optInt("widthPx", 0),
+                    heightPx = d.optInt("heightPx", 0),
+                    densityDpi = d.optInt("densityDpi", 0),
+                    approxInches = d.optDouble("approxInches", 0.0).toFloat(),
+                    activeRefreshHz = d.optDouble("activeRefreshHz", 60.0).toFloat(),
+                    supportedRefreshRatesHz = jsonArrayToFloatList(d.optJSONArray("supportedHz")),
+                    hdrCapabilities = jsonArrayToStringList(d.optJSONArray("hdr")),
+                    wideColorGamut = d.optBoolean("wideGamut", false)
+                )
+            } catch (_: Throwable) {
+            }
+        }
+
+        prefs.getString(KEY_CONNECTIVITY_JSON, null)?.takeIf { it.isNotBlank() }?.let { rawRf ->
+            try {
+                val r = JSONObject(rawRf)
+                connectivitySnapshot = ConnectivitySnapshot(
+                    basebandVersion = r.optString("baseband", "Unknown"),
+                    simSlotCount = r.optInt("simSlots", 0),
+                    sim1State = r.optString("sim1State", "UNKNOWN"),
+                    sim2State = r.optString("sim2State", "UNKNOWN"),
+                    operatorName = r.optString("operator", "Unknown"),
+                    networkType = r.optString("networkType", "Unknown"),
+                    serviceStateLabel = r.optString("serviceState", "Unknown"),
+                    isCellularInService = r.optBoolean("inService", false),
+                    signalDbm = if (r.has("signalDbm") && !r.isNull("signalDbm")) r.optInt("signalDbm") else null,
+                    wifiSupported = r.optBoolean("wifiSupported", false),
+                    wifi5GhzSupported = r.optBoolean("wifi5Ghz", false),
+                    wifi6GhzSupported = r.optBoolean("wifi6Ghz", false),
+                    wifiConnectedSsid = r.optString("wifiSsid", ""),
+                    wifiLinkSpeedMbps = if (r.has("wifiSpeed") && !r.isNull("wifiSpeed")) r.optInt("wifiSpeed") else null,
+                    wifiScanCount = if (r.has("wifiScanCount") && !r.isNull("wifiScanCount")) r.optInt("wifiScanCount") else null,
+                    bluetoothSupported = r.optBoolean("btSupported", false),
+                    bluetoothEnabled = r.optBoolean("btEnabled", false),
+                    bleSupported = r.optBoolean("bleSupported", false),
+                    nfcStatus = r.optString("nfcStatus", "N/A"),
+                    gnssVisibleCount = r.optInt("gnssVis", 0),
+                    gnssUsedCount = r.optInt("gnssUsed", 0),
+                    gnssConstellations = r.optString("gnssSys", "Idle"),
+                    ttffSeconds = if (r.has("ttffSec") && !r.isNull("ttffSec")) r.optDouble("ttffSec").toFloat() else null,
+                    sim1Details = r.optString("sim1Details", ""),
+                    sim2Details = r.optString("sim2Details", ""),
+                    hasDualSimSplitBlock = r.optBoolean("splitBlock", false),
+                    cellularDataCheckSummary = r.optString("cellDataCheck", "")
+                )
+            } catch (_: Throwable) {
+            }
+        }
+
+        prefs.getString(KEY_FP_META_JSON, null)?.takeIf { it.isNotBlank() }?.let { rawFp ->
+            try {
+                val f = JSONObject(rawFp)
+                fingerprint = DeviceFingerprint(
+                    commercialName = f.optString("commercialName"),
+                    brand = f.optString("brand"),
+                    manufacturer = f.optString("manufacturer"),
+                    model = f.optString("model"),
+                    deviceCodename = f.optString("deviceCodename"),
+                    hardware = f.optString("hardware"),
+                    board = f.optString("board"),
+                    androidVersion = f.optString("androidVersion"),
+                    sdkInt = f.optInt("sdkInt", 0),
+                    securityPatch = f.optString("securityPatch"),
+                    buildDisplay = f.optString("buildDisplay"),
+                    buildTags = f.optString("buildTags"),
+                    abiList = f.optString("abiList"),
+                    socBrand = f.optString("socBrand"),
+                    socModel = f.optString("socModel"),
+                    cpuArchitecture = f.optString("cpuArch"),
+                    cpuImplementerSummary = f.optString("cpuImpl"),
+                    cpuCoreClusters = jsonArrayToStringList(f.optJSONArray("clusters")),
+                    cpuCores = emptyList(),
+                    thermalZones = emptyList(),
+                    gpuVendor = f.optString("gpuVendor"),
+                    gpuRenderer = f.optString("gpuRenderer"),
+                    gpuVersion = f.optString("gpuVersion"),
+                    ramTotalBytes = f.optLong("ramTotalBytes"),
+                    ramAvailBytes = f.optLong("ramAvailBytes"),
+                    zramBytes = f.optLong("zramBytes"),
+                    swapBytes = f.optLong("swapBytes"),
+                    storageType = f.optString("storageType"),
+                    storageDeviceName = f.optString("storageDeviceName"),
+                    storageTotalBytes = f.optLong("storageTotalBytes"),
+                    storageFreeBytes = f.optLong("storageFreeBytes"),
+                    storageChipTotalBytes = f.optLong("storageChipTotalBytes"),
+                    storageReadMbps = if (f.has("readMbps") && !f.isNull("readMbps")) f.optDouble("readMbps").toFloat() else null,
+                    storageWriteMbps = if (f.has("writeMbps") && !f.isNull("writeMbps")) f.optDouble("writeMbps").toFloat() else null,
+                    storageBenchNote = f.optString("benchNote"),
+                    bootloaderLocked = f.optString("bootloader"),
+                    verifiedBootState = f.optString("verifiedBoot"),
+                    knoxWarrantyVoid = f.optString("knoxVoid"),
+                    knoxGuardState = f.optString("knoxGuard"),
+                    rootIndicators = jsonArrayToStringList(f.optJSONArray("root")),
+                    selinuxMode = f.optString("selinux"),
+                    kernelVersion = f.optString("kernel"),
+                    widevineLevel = f.optString("widevine"),
+                    widevineSystemId = f.optString("widevineId"),
+                    mdmAdmins = jsonArrayToStringList(f.optJSONArray("mdm")),
+                    financePackagesFound = jsonArrayToStringList(f.optJSONArray("finance")),
+                    specTamperWarnings = jsonArrayToStringList(f.optJSONArray("tamper"))
+                )
+            } catch (_: Throwable) {
+            }
+        }
+
         val rawJson = prefs.getString(KEY_ITEMS_JSON, null) ?: return
         try {
             val arr = JSONArray(rawJson)
@@ -136,7 +242,7 @@ object DiagnosticStore {
                 category = TestCategory.SYSTEM,
                 titleId = "Keamanan, Knox Guard, MDM & Widevine",
                 titleEn = "Security, Knox Guard, MDM & Widevine",
-                subtitleId = "Bootloader, Root/Magisk, Knox/Finance Lock, Fake Spec & Widevine L1/L3",
+                subtitleId = "Bootloader, Root/Magisk, Knox/Finance Lock (Kredivo/PayJoy/SF+), Fake Spec & Widevine",
                 subtitleEn = "Bootloader, Root/Magisk, Knox/Finance Lock, Fake Spec & Widevine L1/L3",
                 isAutomated = true
             ),
@@ -145,8 +251,8 @@ object DiagnosticStore {
                 category = TestCategory.SYSTEM,
                 titleId = "Uji Memori Asli & Kecepatan Flash (eMMC/UFS)",
                 titleEn = "Storage Chip & Sync Speed Benchmark",
-                subtitleId = "Verifikasi tipe penyimpanan, baca cold & tulis langsung (bypass RAM cache)",
-                subtitleEn = "Verify chip type, cold read & direct sync write (bypassing RAM cache)",
+                subtitleId = "Kapasitas chip asli vs usable, baca cold & tulis langsung (bypass RAM cache)",
+                subtitleEn = "Verify real flash capacity tier, cold read & direct sync write",
                 isAutomated = true
             ),
             DiagnosticItem(
@@ -154,17 +260,17 @@ object DiagnosticStore {
                 category = TestCategory.DISPLAY,
                 titleId = "Layar: Dead Pixel, Burn-In & Refresh Rate Nyata",
                 titleEn = "Display: Dead Pixel, Burn-In & Real Refresh Rate",
-                subtitleId = "Kecerahan 100% paksa, warna penuh + grey 10%/50% + gradien + FPS nyata",
-                subtitleEn = "Forced 100% brightness, solid + 10%/50% grey + gradient + real measured FPS",
+                subtitleId = "Warna penuh + grey 10%/50% + gradien + pengukur FPS nyata (anti drop LTPO)",
+                subtitleEn = "Solid + 10%/50% grey + gradient + active LTPO-safe FPS measurement",
                 isAutomated = false
             ),
             DiagnosticItem(
                 id = "touch_digitizer",
                 category = TestCategory.DISPLAY,
-                titleId = "Touchscreen: Grid Penuh, Multi-Touch & Ghost Touch",
-                titleEn = "Touchscreen: Full Grid, Multi-Touch & Ghost Touch",
-                subtitleId = "Panel dapat digeser/lipat agar 100% grid tersentuh + monitor ghost 5 detik",
-                subtitleEn = "Collapsible toolbar for 100% edge grid coverage + 5s idle ghost monitor",
+                titleId = "Touchscreen, Sampling Rate & Deteksi LCD KW",
+                titleEn = "Touchscreen, Sampling Rate & Replacement Panel Check",
+                subtitleId = "Grid penuh + ukur Hz digitizer + batas jari multi-touch (anti LCD KW) + ghost monitor",
+                subtitleEn = "Edge grid + hardware touch Hz probe + multi-touch cap + ghost monitor",
                 isAutomated = false
             ),
             DiagnosticItem(
@@ -172,44 +278,44 @@ object DiagnosticStore {
                 category = TestCategory.BATTERY,
                 titleId = "Baterai, Sirkuit Cas & Stress Test 45 Detik",
                 titleEn = "Battery Health, Charging & 45s Stress Sag Test",
-                subtitleId = "Arus mA/Watt live, protokol USB/PD, serta uji beban voltase anti-baterai suntikan",
-                subtitleEn = "Live mA/Watt, USB/PD protocol & 45s voltage sag stress test",
+                subtitleId = "Arus mA/Watt live (support 1S & 2S Dual-Cell), uji beban voltase anti-baterai drop",
+                subtitleEn = "Live mA/Watt (1S & 2S Dual-Cell aware) & 45s voltage sag stress test",
                 isAutomated = true
             ),
             DiagnosticItem(
                 id = "audio_haptics",
                 category = TestCategory.AUDIO,
-                titleId = "Audio Stereo (Earpiece / L-R), Dual-Mic & Getar",
-                titleEn = "Stereo Audio (Earpiece / L-R), Dual-Mic & Haptics",
-                subtitleId = "Tes Earpiece (API 31+ device routing), Speaker Kiri/Kanan, Dual-Mic & Getar",
-                subtitleEn = "Earpiece routing, Left/Right stereo channels, Dual-Mic loopback & Haptics",
+                titleId = "Audio Stereo, Dual-Mic Loopback & Getar",
+                titleEn = "Stereo Audio, Dual-Mic Loopback & Haptics",
+                subtitleId = "Earpiece, Speaker L/R, rekam Mic Bawah/Atas (auto-gain) & loopback kilat COD",
+                subtitleEn = "Earpiece, L/R speakers, Bottom/Top mic with auto-gain & instant COD loopback",
                 isAutomated = false
             ),
             DiagnosticItem(
                 id = "camera_lenses",
                 category = TestCategory.CAMERA,
-                titleId = "Kamera Multi-Lensa (Zoom 0.6x–5x) & Flash",
-                titleEn = "Multi-Lens Camera (0.6x–5x Zoom) & Flash",
-                subtitleId = "Buka semua ID kamera & pindah lensa Ultrawide/Tele via zoom ratio + Torch",
-                subtitleEn = "Open all physical IDs + switch Ultrawide/Tele via zoom ratio & Torch",
+                titleId = "Kamera Multi-Lensa, Cek Jamur & Fokus AF",
+                titleEn = "Multi-Lens Camera, Sensor Spot Check & Tap AF",
+                subtitleId = "Validasi frame nyata, Zoom UW/Tele, Tap-to-Focus AF lock, Mode Spot Jamur & Torch",
+                subtitleEn = "Real frame verification, UW/Tele zoom, AF lock probe, Spot Check & Torch",
                 isAutomated = false
             ),
             DiagnosticItem(
                 id = "sensors_biometrics",
                 category = TestCategory.SENSORS,
-                titleId = "Sensor Hardware (2-Arah) & Biometrik",
-                titleEn = "Hardware Sensors (Bidirectional) & Biometrics",
-                subtitleId = "Proximity wajib FAR+NEAR, Lux, Gyro/Accel waterpass, Kompas & Sidik Jari",
-                subtitleEn = "Bidirectional Proximity (FAR+NEAR), Lux, Gyro/Accel, Compass & Biometric",
+                titleId = "Sensor, Proximity (IR/Virtual), Segel Barometer & Biometrik",
+                titleEn = "Sensors, Proximity, Barometer Seal & Biometrics",
+                subtitleId = "Proximity 2-arah (IR & Virtual Xiaomi/Samsung), Gyro, Segel IP68 (jika support) & Sidik Jari",
+                subtitleEn = "Bidirectional Proximity (IR & Virtual), Gyro, Barometer seal (if supported) & Bio",
                 isAutomated = false
             ),
             DiagnosticItem(
                 id = "connectivity_rf",
                 category = TestCategory.CONNECTIVITY,
-                titleId = "Baseband, ServiceState Sinyal, Wi-Fi, BT, NFC & GNSS",
-                titleEn = "Baseband, Cellular ServiceState, Wi-Fi, BT, NFC & GNSS",
-                subtitleId = "Cek status IN_SERVICE (anti IMEI blokir), 5GHz/6GHz, BT, NFC & satelit GPS",
-                subtitleEn = "Verify IN_SERVICE (anti-IMEI block), 5GHz/6GHz, BT, NFC & GNSS fix",
+                titleId = "Baseband, Dual-SIM Per-Slot, Tes Data & GNSS",
+                titleEn = "Baseband, Per-Slot Dual-SIM, Data Ping & GNSS",
+                subtitleId = "Cek sinyal SIM 1 & SIM 2 terpisah (anti IMEI blokir sebelah), Tes Data 3s, Wi-Fi & GPS",
+                subtitleEn = "Separate SIM 1 & SIM 2 state (anti split IMEI block), 3s cellular ping, Wi-Fi & GPS",
                 isAutomated = true
             ),
             DiagnosticItem(
@@ -224,10 +330,10 @@ object DiagnosticStore {
             DiagnosticItem(
                 id = "pre_buy_safety",
                 category = TestCategory.COD_SAFETY,
-                titleId = "Cek Wajib Sebelum Bayar & Kalkulator Harga Nego",
-                titleEn = "Pre-Buy Safety Checklist & COD Price Calculator",
-                subtitleId = "Cek PIN/FRP/Akun Google/Mi, IMEI Kemenperin, sinyal & hitung batas angkat aman",
-                subtitleEn = "Verify screen lock/FRP/accounts, IMEI, signal & calculate max safe offer",
+                titleId = "Checklist Kilat COD, Cek IMEI Per-Merk & Anti-Skam",
+                titleEn = "Rapid COD Safety Checklist & OEM IMEI Check",
+                subtitleId = "Cek IMEI *#06#/Pengaturan/Scan Dus sesuai merk, akun kosong, segel fisik & rangkuman minus",
+                subtitleEn = "OEM IMEI guide + box scanner, account/lock sign-out check & auto defect summary",
                 isAutomated = false
             )
         )
@@ -245,7 +351,8 @@ object DiagnosticStore {
         inspectorNote = ""
         sellerInfo = ""
         unitImeiNote = ""
-        priceState = PriceCalculatorState()
+        touchSamplingHzPeak = 0f
+        barometerSealResult = ""
         persistSessionLocked()
         notifyListeners()
     }
@@ -253,6 +360,7 @@ object DiagnosticStore {
     @Synchronized
     fun resetItems() {
         populateDefaultsLocked()
+        persistSessionLocked()
         notifyListeners()
     }
 
@@ -289,8 +397,7 @@ object DiagnosticStore {
     }
 
     @Synchronized
-    fun savePriceState(state: PriceCalculatorState) {
-        priceState = state
+    fun persistSnapshotMeta() {
         persistSessionLocked()
     }
 
@@ -302,6 +409,24 @@ object DiagnosticStore {
             updated.removeAt(0)
         }
         batteryHistoryMa = updated
+    }
+
+    private fun jsonArrayToStringList(arr: JSONArray?): List<String> {
+        if (arr == null) return emptyList()
+        val out = ArrayList<String>(arr.length())
+        for (i in 0 until arr.length()) {
+            out.add(arr.optString(i))
+        }
+        return out
+    }
+
+    private fun jsonArrayToFloatList(arr: JSONArray?): List<Float> {
+        if (arr == null) return emptyList()
+        val out = ArrayList<Float>(arr.length())
+        for (i in 0 until arr.length()) {
+            out.add(arr.optDouble(i, 60.0).toFloat())
+        }
+        return out
     }
 
     private fun persistSessionLocked() {
@@ -330,17 +455,109 @@ object DiagnosticStore {
                     put("verdictNote", s.verdictNote)
                 }.toString()
             }
+            val dispJsonStr = displaySpecs?.let { d ->
+                JSONObject().apply {
+                    put("widthPx", d.widthPx)
+                    put("heightPx", d.heightPx)
+                    put("densityDpi", d.densityDpi)
+                    put("approxInches", d.approxInches.toDouble())
+                    put("activeRefreshHz", d.activeRefreshHz.toDouble())
+                    put("supportedHz", JSONArray(d.supportedRefreshRatesHz.map { it.toDouble() }))
+                    put("hdr", JSONArray(d.hdrCapabilities))
+                    put("wideGamut", d.wideColorGamut)
+                }.toString()
+            }
+            val rfJsonStr = connectivitySnapshot?.let { r ->
+                JSONObject().apply {
+                    put("baseband", r.basebandVersion)
+                    put("simSlots", r.simSlotCount)
+                    put("sim1State", r.sim1State)
+                    put("sim2State", r.sim2State)
+                    put("operator", r.operatorName)
+                    put("networkType", r.networkType)
+                    put("serviceState", r.serviceStateLabel)
+                    put("inService", r.isCellularInService)
+                    put("signalDbm", r.signalDbm)
+                    put("wifiSupported", r.wifiSupported)
+                    put("wifi5Ghz", r.wifi5GhzSupported)
+                    put("wifi6Ghz", r.wifi6GhzSupported)
+                    put("wifiSsid", r.wifiConnectedSsid)
+                    put("wifiSpeed", r.wifiLinkSpeedMbps)
+                    put("wifiScanCount", r.wifiScanCount)
+                    put("btSupported", r.bluetoothSupported)
+                    put("btEnabled", r.bluetoothEnabled)
+                    put("bleSupported", r.bleSupported)
+                    put("nfcStatus", r.nfcStatus)
+                    put("gnssVis", r.gnssVisibleCount)
+                    put("gnssUsed", r.gnssUsedCount)
+                    put("gnssSys", r.gnssConstellations)
+                    put("ttffSec", r.ttffSeconds?.toDouble())
+                    put("sim1Details", r.sim1Details)
+                    put("sim2Details", r.sim2Details)
+                    put("splitBlock", r.hasDualSimSplitBlock)
+                    put("cellDataCheck", r.cellularDataCheckSummary)
+                }.toString()
+            }
+            val fpJsonStr = fingerprint?.let { f ->
+                JSONObject().apply {
+                    put("commercialName", f.commercialName)
+                    put("brand", f.brand)
+                    put("manufacturer", f.manufacturer)
+                    put("model", f.model)
+                    put("deviceCodename", f.deviceCodename)
+                    put("hardware", f.hardware)
+                    put("board", f.board)
+                    put("androidVersion", f.androidVersion)
+                    put("sdkInt", f.sdkInt)
+                    put("securityPatch", f.securityPatch)
+                    put("buildDisplay", f.buildDisplay)
+                    put("buildTags", f.buildTags)
+                    put("abiList", f.abiList)
+                    put("socBrand", f.socBrand)
+                    put("socModel", f.socModel)
+                    put("cpuArch", f.cpuArchitecture)
+                    put("cpuImpl", f.cpuImplementerSummary)
+                    put("clusters", JSONArray(f.cpuCoreClusters))
+                    put("gpuVendor", f.gpuVendor)
+                    put("gpuRenderer", f.gpuRenderer)
+                    put("gpuVersion", f.gpuVersion)
+                    put("ramTotalBytes", f.ramTotalBytes)
+                    put("ramAvailBytes", f.ramAvailBytes)
+                    put("zramBytes", f.zramBytes)
+                    put("swapBytes", f.swapBytes)
+                    put("storageType", f.storageType)
+                    put("storageDeviceName", f.storageDeviceName)
+                    put("storageTotalBytes", f.storageTotalBytes)
+                    put("storageFreeBytes", f.storageFreeBytes)
+                    put("storageChipTotalBytes", f.storageChipTotalBytes)
+                    put("readMbps", f.storageReadMbps?.toDouble())
+                    put("writeMbps", f.storageWriteMbps?.toDouble())
+                    put("benchNote", f.storageBenchNote)
+                    put("bootloader", f.bootloaderLocked)
+                    put("verifiedBoot", f.verifiedBootState)
+                    put("knoxVoid", f.knoxWarrantyVoid)
+                    put("knoxGuard", f.knoxGuardState)
+                    put("root", JSONArray(f.rootIndicators))
+                    put("selinux", f.selinuxMode)
+                    put("kernel", f.kernelVersion)
+                    put("widevine", f.widevineLevel)
+                    put("widevineId", f.widevineSystemId)
+                    put("mdm", JSONArray(f.mdmAdmins))
+                    put("finance", JSONArray(f.financePackagesFound))
+                    put("tamper", JSONArray(f.specTamperWarnings))
+                }.toString()
+            }
+
             ctx.getSharedPreferences(PREF_SESSION, Context.MODE_PRIVATE)
                 .edit()
                 .putString(KEY_ITEMS_JSON, arr.toString())
                 .putString(KEY_STRESS_JSON, stressJsonStr)
+                .putString(KEY_DISPLAY_JSON, dispJsonStr)
+                .putString(KEY_CONNECTIVITY_JSON, rfJsonStr)
+                .putString(KEY_FP_META_JSON, fpJsonStr)
                 .putString(KEY_SELLER, sellerInfo)
                 .putString(KEY_IMEI, unitImeiNote)
                 .putString(KEY_INSPECTOR, inspectorNote)
-                .putLong(KEY_MARKET_PRICE, priceState.marketPriceIdr)
-                .putLong(KEY_TARGET_PROFIT, priceState.targetProfitIdr)
-                .putLong(KEY_DEDUCTION, priceState.defectDeductionIdr)
-                .putString(KEY_PRICE_NOTE, priceState.customNote)
                 .apply()
         } catch (_: Throwable) {
         }

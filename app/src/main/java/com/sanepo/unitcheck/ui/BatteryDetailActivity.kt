@@ -35,6 +35,8 @@ class BatteryDetailActivity : AppCompatActivity() {
     private var stressElapsedSec = 0
     private var stressStartVoltMv = 0
     private var stressMinVoltMv = Int.MAX_VALUE
+    private var stressMinPerCellMv = Int.MAX_VALUE
+    private var stressIsDualCell = false
     private var stressStartPct = 0
     private var stressMaxTempC = 0f
 
@@ -139,8 +141,8 @@ class BatteryDetailActivity : AppCompatActivity() {
         if (prev == null) {
             binding.tvStressStatus.text = Lang.t(
                 this,
-                "Cabut charger lalu jalankan 45s load (4 thread CPU + Torch) untuk mendeteksi sel baterai kembung/bocor.",
-                "Unplug charger and run 45s load (4 CPU threads + Torch) to catch voltage sag / worn cells."
+                "Cabut charger lalu jalankan 45s load (All-Core CPU + Torch) untuk mendeteksi sel baterai kembung/bocor.",
+                "Unplug charger and run 45s load (All-Core CPU + Torch) to catch voltage sag / worn cells."
             )
         } else {
             val tag = if (prev.passed) "PASS" else "FAIL"
@@ -152,10 +154,23 @@ class BatteryDetailActivity : AppCompatActivity() {
 
     private fun startStressTest() {
         val init = BatteryHardwareReader.read(this)
+        if (init.isCharging) {
+            val msg = Lang.t(
+                this,
+                "CABUT CHARGER / POWERBANK DULU! Tidak bisa menjalankan Stress Test sambil mengecas.",
+                "UNPLUG CHARGER FIRST! Cannot run battery sag stress test while charging."
+            )
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            binding.tvStressStatus.text = msg
+            return
+        }
+
         stressRunning.set(true)
         stressElapsedSec = 0
         stressStartVoltMv = init.voltageMv
         stressMinVoltMv = if (init.voltageMv > 0) init.voltageMv else Int.MAX_VALUE
+        stressMinPerCellMv = if (init.perCellVoltageMv > 0) init.perCellVoltageMv else Int.MAX_VALUE
+        stressIsDualCell = init.isDualCellPack
         stressStartPct = init.levelPct
         stressMaxTempC = init.tempCelsius
 
@@ -166,8 +181,9 @@ class BatteryDetailActivity : AppCompatActivity() {
             setTorchEnabled(true)
         }
 
+        val coreCount = Runtime.getRuntime().availableProcessors().coerceIn(2, 16)
         stressThreads.clear()
-        for (idx in 0 until 4) {
+        for (idx in 0 until coreCount) {
             val t = Thread {
                 var acc = 1.0001 + idx
                 while (stressRunning.get()) {
@@ -176,7 +192,7 @@ class BatteryDetailActivity : AppCompatActivity() {
                 }
             }.apply {
                 name = "SanepoStressCpu-$idx"
-                priority = Thread.MIN_PRIORITY + 1
+                priority = Thread.NORM_PRIORITY
                 start()
             }
             stressThreads.add(t)
@@ -186,14 +202,19 @@ class BatteryDetailActivity : AppCompatActivity() {
         binding.pbStressProgress.progress = 0
         binding.tvStressStatus.text = Lang.t(
             this,
-            "Stress test berjalan (0/${STRESS_DURATION_SEC}s)... Jangan sentuh charger.",
-            "Stress test running (0/${STRESS_DURATION_SEC}s)... Keep charger unplugged."
+            "Stress test ($coreCount core CPU) berjalan 0/${STRESS_DURATION_SEC}s... Jangan colok charger.",
+            "Stress test ($coreCount CPU cores) running 0/${STRESS_DURATION_SEC}s... Keep charger unplugged."
         )
     }
 
-    private fun stopStressTest(completed: Boolean, latestTelemetry: com.sanepo.unitcheck.model.BatteryTelemetry? = null) {
+    private fun stopStressTest(
+        completed: Boolean,
+        latestTelemetry: com.sanepo.unitcheck.model.BatteryTelemetry? = null,
+        abortReason: String? = null
+    ) {
         if (!stressRunning.getAndSet(false)) {
             setTorchEnabled(false)
+            restoreBrightnessAndWakeLock()
             return
         }
         for (t in stressThreads) {
@@ -204,12 +225,12 @@ class BatteryDetailActivity : AppCompatActivity() {
         }
         stressThreads.clear()
         setTorchEnabled(false)
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        restoreBrightnessAndWakeLock()
         binding.btnStartStress.text = Lang.t(this, "ULANGI STRESS TEST 45s", "RE-RUN 45s STRESS TEST")
 
         val t = latestTelemetry ?: BatteryHardwareReader.read(this)
         if (!completed) {
-            binding.tvStressStatus.text = Lang.t(
+            binding.tvStressStatus.text = abortReason ?: Lang.t(
                 this,
                 "Stress test dihentikan pada ${stressElapsedSec}s (tidak disimpan).",
                 "Stress test stopped at ${stressElapsedSec}s (not recorded)."
@@ -218,17 +239,19 @@ class BatteryDetailActivity : AppCompatActivity() {
         }
 
         val minV = if (stressMinVoltMv == Int.MAX_VALUE) t.voltageMv else stressMinVoltMv
+        val minPerCellV = if (stressMinPerCellMv == Int.MAX_VALUE) t.perCellVoltageMv else stressMinPerCellMv
         val dropMv = (stressStartVoltMv - minV).coerceAtLeast(0)
         val pctDrop = (stressStartPct - t.levelPct).coerceAtLeast(0)
-        val sagFail = minV in 1..3449 && t.levelPct >= 30
+        val sagFail = minPerCellV in 1..3449 && t.levelPct >= 30
         val dropFail = pctDrop > 3
         val passed = !sagFail && !dropFail
 
+        val cellDesc = if (stressIsDualCell) "${minPerCellV}mV/sel (Pack ${minV}mV)" else "${minV}mV"
         val verdict = when {
             sagFail -> Lang.t(
                 this,
-                "SEL DROP PARAH: Tegangan anjlok ke ${minV}mV (<3450mV) pada baterai ${t.levelPct}%!",
-                "SEVERE VOLTAGE SAG: Dropped to ${minV}mV (<3450mV) while SoC is ${t.levelPct}%!"
+                "SEL DROP PARAH: Tegangan anjlok ke $cellDesc (<3450mV/sel) pada baterai ${t.levelPct}%!",
+                "SEVERE VOLTAGE SAG: Dropped to $cellDesc (<3450mV/cell) while SoC is ${t.levelPct}%!"
             )
             dropFail -> Lang.t(
                 this,
@@ -237,8 +260,8 @@ class BatteryDetailActivity : AppCompatActivity() {
             )
             else -> Lang.t(
                 this,
-                "Tegangan stabil (min ${minV}mV, turun ${pctDrop}% dalam ${STRESS_DURATION_SEC}s).",
-                "Voltage stable (min ${minV}mV, -${pctDrop}% in ${STRESS_DURATION_SEC}s)."
+                "Tegangan stabil (min $cellDesc, turun ${pctDrop}% dalam ${STRESS_DURATION_SEC}s).",
+                "Voltage stable (min $cellDesc, -${pctDrop}% in ${STRESS_DURATION_SEC}s)."
             )
         }
 
@@ -258,13 +281,23 @@ class BatteryDetailActivity : AppCompatActivity() {
             "battery_charging",
             if (passed) TestStatus.PASS else TestStatus.FAIL,
             if (passed) {
-                "${t.levelPct}% | Stress45s OK (min ${minV}mV, -${pctDrop}%)"
+                "${t.levelPct}% | Stress45s OK (min $cellDesc, -${pctDrop}%)"
             } else {
                 "FAIL Stress45s: $verdict"
             },
             binding.tvBatteryMeta.text.toString()
         )
         renderExistingStressSummary()
+    }
+
+    private fun restoreBrightnessAndWakeLock() {
+        try {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window.attributes = window.attributes.apply {
+                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+        } catch (_: Throwable) {
+        }
     }
 
     private fun setTorchEnabled(enabled: Boolean) {
@@ -302,19 +335,39 @@ class BatteryDetailActivity : AppCompatActivity() {
         val sign = if (t.currentMa > 0) "+" else ""
         binding.tvBatteryHero.textSize = 18f
         binding.tvBatteryHero.text = "${t.levelPct}% | ${sign}${t.currentMa}mA | ${t.wattageW}W"
+        val voltLine = if (t.isDualCellPack) {
+            "${t.voltageMv} mV (2S: ~${t.perCellVoltageMv} mV/sel)"
+        } else {
+            "${t.voltageMv} mV"
+        }
         binding.tvBatteryMeta.text = buildString {
             appendLine("Status / Source : ${t.statusLabel} (${t.pluggedLabel})")
             appendLine("Protocol Hint   : ${t.chargingProtocolHint}")
-            appendLine("Voltage / Temp  : ${t.voltageMv} mV  |  ${t.tempCelsius} C  (${t.technology})")
+            appendLine("Voltage / Temp  : $voltLine  |  ${t.tempCelsius} C  (${t.technology})")
             appendLine("Design / Full   : ${t.designCapacityMah?.let { "$it mAh" } ?: "Kernel Restricted"} / ${t.fullChargeCapacityMah?.let { "$it mAh" } ?: "N/A"}")
             appendLine("Est. Health     : ${t.estimatedHealthPct?.let { "$it%" } ?: t.healthLabel}  |  Cycles: ${t.cycleCount?.toString() ?: "N/A"}")
             append("Charge Counter  : ${t.chargeCounterMah?.let { "$it mAh" } ?: "N/A"}  |  Node: ${t.sysfsSourceUsed}")
         }
 
         if (stressRunning.get()) {
+            if (t.isCharging) {
+                stopStressTest(
+                    completed = false,
+                    latestTelemetry = t,
+                    abortReason = Lang.t(
+                        this,
+                        "Charger terpasang di tengah tes! Stress test dibatalkan agar hasil tidak palsu.",
+                        "Charger plugged mid-test! Stress test aborted for accuracy."
+                    )
+                )
+                return
+            }
             stressElapsedSec++
             if (t.voltageMv in 1 until stressMinVoltMv) {
                 stressMinVoltMv = t.voltageMv
+            }
+            if (t.perCellVoltageMv in 1 until stressMinPerCellMv) {
+                stressMinPerCellMv = t.perCellVoltageMv
             }
             if (t.tempCelsius > stressMaxTempC) {
                 stressMaxTempC = t.tempCelsius

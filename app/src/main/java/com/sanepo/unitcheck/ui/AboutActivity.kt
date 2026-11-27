@@ -112,26 +112,26 @@ class AboutActivity : AppCompatActivity() {
             this,
             buildString {
                 appendLine("STANDAR NILAI KRITIS INSPEKSI HP BEKAS:")
-                appendLine("- Baterai Sehat   : Stress 45s min >= 3450 mV & drop <= 3%")
-                appendLine("- Layar OLED/IPS  : Uji #1A1A1A (10% grey) untuk green-tint/shadow")
-                appendLine("- Touchscreen     : Grid >= 95% tepi ke tepi & Ghost 5s = 0 hit")
-                appendLine("- Sinyal/IMEI     : Baseband valid & SIM Ready -> Service IN_SERVICE")
-                append("- Legal/Keamanan  : Knox Guard Clean, MDM kosong, PIN layar dilepas")
+                appendLine("- Baterai Sehat   : Stress 45s min >= 3450 mV/sel & drop <= 3%")
+                appendLine("- Layar & LCD KW  : Uji #1A1A1A + Touch Hz (>=85Hz) & Multi >=5pt")
+                appendLine("- Barometer IP68  : Tekan layar -> naik >= +0.25 hPa (segel utuh)")
+                appendLine("- Sinyal/IMEI     : Baseband valid & SIM 1/2 terpisah IN_SERVICE")
+                append("- Legal/Keamanan  : Knox Guard Clean, MDM/Leasing kosong, PIN lepas")
             },
             buildString {
                 appendLine("USED-PHONE DIAGNOSTIC THRESHOLDS:")
-                appendLine("- Battery Cell    : 45s stress min >= 3450 mV & <= 3% drop")
-                appendLine("- OLED/IPS Panel  : Inspect 10% grey (#1A1A1A) for green tint/burn-in")
-                appendLine("- Digitizer       : >= 95% edge grid coverage & 0 ghost touches in 5s")
-                appendLine("- RF / Carrier    : Valid Baseband & SIM Ready -> Service IN_SERVICE")
-                append("- Lock Legal      : Clean Knox Guard, no MDM/Finance apps, screen lock off")
+                appendLine("- Battery Cell    : 45s stress min >= 3450 mV/cell & <= 3% drop")
+                appendLine("- Panel & Touch   : 10% grey (#1A1A1A) + >=85Hz Touch + >=5pt Multi")
+                appendLine("- Barometer Seal  : Screen press delta >= +0.25 hPa (intact seal)")
+                appendLine("- RF / Dual-SIM   : Valid Baseband & per-slot SIM IN_SERVICE")
+                append("- Lock Legal      : Clean Knox Guard, no MDM/Finance apps, lock off")
             }
         )
 
         binding.tvPrivacyAudit.text = Lang.t(
             this,
-            "PRIVASI & JARINGAN:\nSemua 11 tes diagnostik hardware berjalan 100% offline. Tidak ada IMEI, nomor seri, atau data pribadi yang dikirim ke server luar. Koneksi internet hanya digunakan ke api.github.com saat fitur Cek Update dijalankan.",
-            "PRIVACY & NETWORK AUDIT:\nAll 11 hardware diagnostic modules run 100% offline. No IMEI, serial number, or device data is uploaded. Network calls connect strictly to api.github.com when update checks run."
+            "PRIVASI & JARINGAN:\nSemua 11 tes hardware berjalan offline. Tidak ada IMEI, nomor seri, atau data pribadi yang dikirim ke server luar. Internet hanya dipakai ke api.github.com saat Cek Update, atau ping TCP cepat 1.1.1.1 saat tombol Tes Data Seluler ditekan.",
+            "PRIVACY & NETWORK AUDIT:\nAll 11 hardware checks run offline. Zero IMEI, serial numbers, or personal data are uploaded. Network access only contacts api.github.com on update checks or 1.1.1.1 TCP reachability when Cellular Data Test is tapped."
         )
 
         binding.tvMaintHeader.text = Lang.t(this, "PEMELIHARAAN & UTILITAS CACHE", "CACHE MAINTENANCE & BUILD TOOLS")

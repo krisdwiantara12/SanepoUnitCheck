@@ -8,7 +8,9 @@ import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.nfc.NfcAdapter
 import android.os.Build
@@ -17,11 +19,16 @@ import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
 import android.telephony.CellInfoWcdma
 import android.telephony.ServiceState
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.biometric.BiometricManager
 import androidx.core.content.ContextCompat
 import com.sanepo.unitcheck.model.ConnectivitySnapshot
 import com.sanepo.unitcheck.model.SensorInfoItem
+import java.net.InetSocketAddress
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 object SensorAndRFEngine {
 
@@ -57,7 +64,8 @@ object SensorAndRFEngine {
         gnssVisible: Int = 0,
         gnssUsed: Int = 0,
         gnssConstellations: String = "Idle",
-        ttffSec: Float? = null
+        ttffSec: Float? = null,
+        existingCellDataCheck: String = ""
     ): ConnectivitySnapshot {
         val baseband = try {
             Build.getRadioVersion().orEmpty().ifBlank { "Unknown / Missing" }
@@ -81,28 +89,37 @@ object SensorAndRFEngine {
 
         val sim1State = readSimSlotState(tm, 0)
         val sim2State = if (slotCount >= 2) readSimSlotState(tm, 1) else "No Slot 2"
-        val operatorName = try {
-            tm?.networkOperatorName.orEmpty().ifBlank { "No Carrier" }
-        } catch (_: Throwable) {
-            "Unknown"
-        }
 
-        val networkType = if (tm != null && hasPhonePerm) {
+        val perSlot = readPerSlotDetails(context, tm, slotCount, sim1State, sim2State, hasPhonePerm)
+
+        val operatorName = perSlot.primaryOperator.ifBlank {
             try {
-                @Suppress("DEPRECATION")
-                val typeInt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) tm.dataNetworkType else tm.networkType
-                mapNetworkType(typeInt)
+                tm?.networkOperatorName.orEmpty().ifBlank { "No Carrier" }
             } catch (_: Throwable) {
-                "Restricted"
+                "Unknown"
             }
-        } else if (tm == null) {
-            "No Modem"
-        } else {
-            "Perm Required"
         }
 
-        val (serviceStateLabel, isInService) = readServiceState(context, tm)
-        val signalDbm = readSignalDbm(context, tm)
+        val networkType = perSlot.primaryNetworkType.ifBlank {
+            if (tm != null && hasPhonePerm) {
+                try {
+                    @Suppress("DEPRECATION")
+                    val typeInt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) tm.dataNetworkType else tm.networkType
+                    mapNetworkType(typeInt)
+                } catch (_: Throwable) {
+                    "Restricted"
+                }
+            } else if (tm == null) {
+                "No Modem"
+            } else {
+                "Perm Required"
+            }
+        }
+
+        val (defaultSvcLabel, defaultInSvc) = readServiceState(context, tm)
+        val serviceStateLabel = perSlot.combinedServiceLabel.ifBlank { defaultSvcLabel }
+        val isInService = perSlot.anyInService ?: defaultInSvc
+        val signalDbm = perSlot.primaryDbm ?: readSignalDbm(context, tm)
 
         val pm = context.packageManager
         val wifiSupported = pm.hasSystemFeature(PackageManager.FEATURE_WIFI)
@@ -172,8 +189,194 @@ object SensorAndRFEngine {
             gnssVisibleCount = gnssVisible,
             gnssUsedCount = gnssUsed,
             gnssConstellations = gnssConstellations,
-            ttffSeconds = ttffSec
+            ttffSeconds = ttffSec,
+            sim1Details = perSlot.sim1Text,
+            sim2Details = perSlot.sim2Text,
+            hasDualSimSplitBlock = perSlot.splitBlockDetected,
+            cellularDataCheckSummary = existingCellDataCheck
         )
+    }
+
+    private data class PerSlotSummary(
+        val sim1Text: String,
+        val sim2Text: String,
+        val combinedServiceLabel: String,
+        val anyInService: Boolean?,
+        val splitBlockDetected: Boolean,
+        val primaryOperator: String,
+        val primaryNetworkType: String,
+        val primaryDbm: Int?
+    )
+
+    @SuppressLint("MissingPermission")
+    private fun readPerSlotDetails(
+        context: Context,
+        tm: TelephonyManager?,
+        slotCount: Int,
+        sim1State: String,
+        sim2State: String,
+        hasPhonePerm: Boolean
+    ): PerSlotSummary {
+        if (tm == null) {
+            return PerSlotSummary("No Modem", "No Modem", "", null, false, "", "", null)
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !hasPhonePerm) {
+            val s1 = if (sim1State == "SIM READY") "$sim1State | ${tm.networkOperatorName.orEmpty()}" else sim1State
+            val s2 = if (slotCount >= 2) sim2State else "No Slot 2"
+            return PerSlotSummary(s1, s2, "", null, false, "", "", null)
+        }
+
+        val slotInService = HashMap<Int, Boolean>()
+        val slotText = HashMap<Int, String>()
+        var firstOp = ""
+        var firstNet = ""
+        var firstDbm: Int? = null
+
+        try {
+            val sm = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
+            val subs = sm?.activeSubscriptionInfoList.orEmpty()
+            for (sub in subs) {
+                val slotIdx = sub.simSlotIndex
+                val subTm = tm.createForSubscriptionId(sub.subscriptionId)
+                val carrier = sub.carrierName?.toString().orEmpty()
+                    .ifBlank { subTm.networkOperatorName.orEmpty() }
+                    .ifBlank { "No Carrier" }
+                val (svcLabel, inSvc) = readServiceState(context, subTm)
+                val netStr = try {
+                    mapNetworkType(subTm.dataNetworkType)
+                } catch (_: Throwable) {
+                    "Unknown"
+                }
+                val dbm = readSignalDbm(context, subTm)
+                slotInService[slotIdx] = inSvc
+                slotText[slotIdx] = "$carrier | $svcLabel | $netStr${dbm?.let { " | ${it}dBm" } ?: ""}"
+
+                if (firstOp.isBlank() && carrier != "No Carrier") firstOp = carrier
+                if (firstNet.isBlank() && !netStr.contains("Idle")) firstNet = netStr
+                if (firstDbm == null && dbm != null) firstDbm = dbm
+            }
+        } catch (_: Throwable) {
+        }
+
+        val s1Final = slotText[0] ?: sim1State
+        val s2Final = if (slotCount >= 2) (slotText[1] ?: sim2State) else "No Slot 2"
+
+        val sim1Ready = sim1State == "SIM READY"
+        val sim2Ready = slotCount >= 2 && sim2State == "SIM READY"
+        val s1Ok = slotInService[0]
+        val s2Ok = slotInService[1]
+
+        // Catch single-slot IMEI blocks where one inserted SIM gets service while the other is EMERGENCY_ONLY / OUT_OF_SERVICE.
+        val splitBlock = (sim1Ready && s1Ok == false) || (sim2Ready && s2Ok == false)
+        val combinedSvc = when {
+            s1Ok == true && s2Ok == true -> "SIM1+SIM2 IN_SERVICE"
+            splitBlock && (s1Ok == true || s2Ok == true) -> "PER-SLOT BLOCK ALERT"
+            s1Ok == true -> "SIM1 IN_SERVICE"
+            s2Ok == true -> "SIM2 IN_SERVICE"
+            s1Ok == false || s2Ok == false -> "NO SERVICE (SIM Blocked/RF Fault)"
+            else -> ""
+        }
+        val anyOk = when {
+            s1Ok == true || s2Ok == true -> true
+            s1Ok == false || s2Ok == false -> false
+            else -> null
+        }
+        return PerSlotSummary(
+            sim1Text = s1Final,
+            sim2Text = s2Final,
+            combinedServiceLabel = combinedSvc,
+            anyInService = anyOk,
+            splitBlockDetected = splitBlock,
+            primaryOperator = firstOp,
+            primaryNetworkType = firstNet,
+            primaryDbm = firstDbm
+        )
+    }
+
+    /**
+     * Executes a 3-second real cellular data reachability probe bound explicitly to TRANSPORT_CELLULAR,
+     * bypassing Wi-Fi when both are connected so actual SIM 4G/5G TX/RX modem traffic is tested.
+     */
+    fun runCellularDataProbe(context: Context): Pair<Boolean, String> {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return Pair(false, "ConnectivityManager unavailable")
+
+        // First see if an already-active TRANSPORT_CELLULAR network exists across allNetworks.
+        @Suppress("DEPRECATION")
+        val existingCellNet = try {
+            cm.allNetworks.firstOrNull { net ->
+                val caps = cm.getNetworkCapabilities(net)
+                caps != null &&
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            }
+        } catch (_: Throwable) {
+            null
+        }
+
+        if (existingCellNet != null) {
+            return testTcpOverNetwork(existingCellNet)
+        }
+
+        val latch = CountDownLatch(1)
+        val acquiredNet = AtomicReference<Network?>(null)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                acquiredNet.compareAndSet(null, network)
+                latch.countDown()
+            }
+
+            override fun onUnavailable() {
+                latch.countDown()
+            }
+        }
+
+        return try {
+            val req = NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                cm.requestNetwork(req, callback, 2800)
+            } else {
+                cm.requestNetwork(req, callback)
+            }
+            latch.await(3000, TimeUnit.MILLISECONDS)
+            val net = acquiredNet.get()
+            if (net == null) {
+                Pair(false, "Data Seluler tidak aktif / kartu tidak ada akses internet")
+            } else {
+                testTcpOverNetwork(net)
+            }
+        } catch (t: Throwable) {
+            Pair(false, "Gagal akses jaringan seluler (${t.javaClass.simpleName})")
+        } finally {
+            try {
+                cm.unregisterNetworkCallback(callback)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private fun testTcpOverNetwork(network: Network): Pair<Boolean, String> {
+        val targets = arrayOf("1.1.1.1" to 443, "8.8.8.8" to 53)
+        for ((host, port) in targets) {
+            var socket: java.net.Socket? = null
+            try {
+                val start = System.currentTimeMillis()
+                socket = network.socketFactory.createSocket()
+                socket.connect(InetSocketAddress(host, port), 1800)
+                val rtt = (System.currentTimeMillis() - start).coerceAtLeast(1L)
+                return Pair(true, "DATA SELULER OK (${rtt}ms via SIM -> $host)")
+            } catch (_: Throwable) {
+            } finally {
+                try {
+                    socket?.close()
+                } catch (_: Throwable) {
+                }
+            }
+        }
+        return Pair(false, "SIM terhubung ke seluler tapi gagal kirim data (Cek kuota / RF PA)")
     }
 
     private fun readSimSlotState(tm: TelephonyManager?, slot: Int): String {

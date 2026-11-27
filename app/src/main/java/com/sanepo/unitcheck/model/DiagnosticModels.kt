@@ -81,6 +81,7 @@ data class DeviceFingerprint(
     val storageDeviceName: String,
     val storageTotalBytes: Long,
     val storageFreeBytes: Long,
+    val storageChipTotalBytes: Long = 0L,
     val storageReadMbps: Float?,
     val storageWriteMbps: Float?,
     val storageBenchNote: String,
@@ -126,7 +127,9 @@ data class BatteryTelemetry(
     val cycleCount: Int?,
     val chargeCounterMah: Int?,
     val chargingProtocolHint: String,
-    val sysfsSourceUsed: String
+    val sysfsSourceUsed: String,
+    val isDualCellPack: Boolean = false,
+    val perCellVoltageMv: Int = voltageMv
 )
 
 data class BatteryStressSummary(
@@ -189,15 +192,9 @@ data class ConnectivitySnapshot(
     val gnssVisibleCount: Int,
     val gnssUsedCount: Int,
     val gnssConstellations: String,
-    val ttffSeconds: Float?
+    val ttffSeconds: Float?,
+    val sim1Details: String = "",
+    val sim2Details: String = "",
+    val hasDualSimSplitBlock: Boolean = false,
+    val cellularDataCheckSummary: String = ""
 )
-
-data class PriceCalculatorState(
-    val marketPriceIdr: Long = 0L,
-    val targetProfitIdr: Long = 250_000L,
-    val defectDeductionIdr: Long = 0L,
-    val customNote: String = ""
-) {
-    val maxSafeBuyPriceIdr: Long
-        get() = (marketPriceIdr - targetProfitIdr - defectDeductionIdr).coerceAtLeast(0L)
-}

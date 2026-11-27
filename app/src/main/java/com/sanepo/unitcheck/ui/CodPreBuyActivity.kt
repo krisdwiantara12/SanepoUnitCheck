@@ -1,25 +1,25 @@
 package com.sanepo.unitcheck.ui
 
+import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.KeyEvent
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.sanepo.unitcheck.R
 import com.sanepo.unitcheck.databinding.ActivityCodPreBuyBinding
 import com.sanepo.unitcheck.engine.DeviceFingerprintEngine
-import com.sanepo.unitcheck.engine.ReportExporter
+import com.sanepo.unitcheck.engine.OemDeviceHelper
 import com.sanepo.unitcheck.engine.SensorAndRFEngine
 import com.sanepo.unitcheck.model.DiagnosticStore
-import com.sanepo.unitcheck.model.PriceCalculatorState
 import com.sanepo.unitcheck.model.TestStatus
 import com.sanepo.unitcheck.util.Lang
 
@@ -28,6 +28,38 @@ class CodPreBuyActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCodPreBuyBinding
     private var deviceSecureLockActive = false
     private var criticalSecurityLockFound = false
+
+    private val barcodeLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == Activity.RESULT_OK && res.data != null) {
+            val raw = res.data?.getStringExtra(ImeiScannerActivity.EXTRA_RAW_CODE).orEmpty()
+            val digits = res.data?.getStringExtra(ImeiScannerActivity.EXTRA_DIGITS).orEmpty()
+            val luhnValid = res.data?.getBooleanExtra(ImeiScannerActivity.EXTRA_LUHN_VALID, false) ?: false
+
+            val valueToSave = digits.ifEmpty { raw }
+            if (valueToSave.isNotEmpty()) {
+                DiagnosticStore.saveSessionMetadata(
+                    seller = DiagnosticStore.sellerInfo,
+                    imei = valueToSave,
+                    note = DiagnosticStore.inspectorNote
+                )
+            }
+            binding.tvScannedImeiResult.visibility = View.VISIBLE
+            val luhnBadge = if (digits.length == 15) {
+                if (luhnValid) "Luhn Digit-15: VALID" else "PERINGATAN: Luhn Digit-15 TIDAK VALID (Waspada stiker dus palsu!)"
+            } else {
+                "Kode/SN: $raw"
+            }
+            binding.tvScannedImeiResult.setTextColor(
+                ContextCompat.getColor(
+                    this,
+                    if (digits.length == 15 && !luhnValid) R.color.status_fail_fg else R.color.status_pass_fg
+                )
+            )
+            binding.tvScannedImeiResult.text = "Hasil Scan Dus/Barcode: $valueToSave\n$luhnBadge"
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,49 +77,74 @@ class CodPreBuyActivity : AppCompatActivity() {
             binding.tvWizardStep.text = CodWizardFlow.stepLabel(this)
         }
 
+        val oemProfile = OemDeviceHelper.buildProfile()
+
         binding.btnBackCod.text = Lang.t(this, "KEMBALI", "BACK")
-        binding.tvCodTitle.text = Lang.t(this, "Checklist COD & Kalkulator Harga", "COD Pre-Buy Check & Calculator")
+        binding.tvCodTitle.text = Lang.t(this, "Checklist Kilat COD & Cek IMEI", "Rapid COD Check & OEM IMEI")
         binding.tvCodAutoHeader.text = Lang.t(this, "VERIFIKASI KEAMANAN & LEGALITAS OTOMATIS", "AUTO LEGAL & SECURITY CHECK")
-        binding.btnCodDialImei.text = "*#06# IMEI"
+        binding.tvOemImeiHeader.text = Lang.t(
+            this,
+            "CEK IMEI SESUAI MERK (${oemProfile.displayBrandLabel.uppercase()})",
+            "OEM IMEI & QC HELPER (${oemProfile.displayBrandLabel.uppercase()})"
+        )
+        binding.tvOemImeiGuide.text = buildString {
+            appendLine("${oemProfile.displayBrandLabel} | ${oemProfile.osFlavorLabel}")
+            append(Lang.t(this@CodPreBuyActivity, oemProfile.imeiSettingsPathId, oemProfile.imeiSettingsPathEn))
+        }
+        binding.btnCodImeiSettings.text = Lang.t(this, "IMEI DI PENGATURAN", "IMEI IN SETTINGS")
+        binding.btnCodDialImei.text = "DIAL *#06 (+#)"
+        binding.btnCodScanBarcode.text = Lang.t(this, "SCAN BARCODE DUS", "SCAN BOX BARCODE")
+        binding.btnCodOemQcCode.text = Lang.t(this, "MENU QC ${oemProfile.primaryQcCode}", "OEM QC ${oemProfile.primaryQcCode}")
+
         binding.btnCodOpenAccounts.text = Lang.t(this, "CEK AKUN / SYNC", "CHECK ACCOUNTS")
         binding.btnCodOpenSecurity.text = Lang.t(this, "KUNCI LAYAR", "SCREEN LOCK")
 
-        binding.tvCodChecklistHeader.text = Lang.t(this, "VERIFIKASI WAJIB SEBELUM TRANSFER", "MANDATORY PRE-BUY CHECKBOXES")
+        binding.tvCodChecklistHeader.text = Lang.t(this, "CHECKLIST 1-TAP ANTI-BONCOS SEBELUM TRANSFER", "1-TAP PRE-PAYMENT CHECKLIST")
         binding.cbAccountClear.text = Lang.t(
             this,
-            "Akun Google, Mi Cloud, Samsung & Apple/Cloud sudah Sign Out bersih",
+            "Akun Google, Mi Cloud, Samsung & Family Link sudah Sign Out bersih",
             "Google, Mi Cloud, Samsung & vendor accounts cleanly signed out"
+        )
+        binding.cbResetReady.text = Lang.t(
+            this,
+            "Kunci layar (PIN/Pola/Face) sudah dihapus & siap Reset Pabrik",
+            "Screen lock (PIN/Pattern) removed & unit ready for factory reset"
         )
         binding.cbImeiMatch.text = Lang.t(
             this,
-            "IMEI *#06# cocok dengan dus/nota & terdaftar Kemenperin (ada sinyal)",
-            "IMEI *#06# matches box & carrier whitelist (cellular works)"
+            "IMEI Mesin cocok dengan Dus/Nota & SIM 1/SIM 2 muncul sinyal normal",
+            "Device IMEI matches box/receipt & SIM slots get normal service"
         )
         binding.cbPhysicalOk.text = Lang.t(
             this,
-            "Baut, lem frame, slot SIM & fisik casing sesuai kesepakatan COD",
-            "Frame seals, screws, SIM tray & housing match seller agreement"
+            "Fisik aman (baut utuh, lem frame/LCD rapat, tidak ada bercak air di slot SIM)",
+            "Screws, frame seals, backdoor/LCD glue & SIM liquid indicator look clean"
         )
 
-        binding.tvCalcHeader.text = Lang.t(this, "KALKULATOR POTONGAN MINUS COD", "COD DEDUCTION & MAX-BUY CALCULATOR")
-        binding.lblMarketPrice.text = Lang.t(this, "Harga Pasar Bekas Mulus (Rp)", "Clean Used Market Value (Rp)")
-        binding.lblTargetProfit.text = Lang.t(this, "Target Margin / Laba Minimal (Rp)", "Target Margin / Profit Buffer (Rp)")
-        binding.lblDefectDeduction.text = Lang.t(this, "Total Potongan Minus / Estimasi Servis (Rp)", "Total Repair / Defect Deductions (Rp)")
-        binding.etPriceNote.hint = Lang.t(this, "Catatan minus nego (opsional)", "Negotiation defect notes (optional)")
+        binding.tvDefectSummaryHeader.text = Lang.t(this, "RANGKUMAN TEMUAN UNIT (BAHAN NEGO OBJEKTIF)", "AUTO UNIT DEFECT SUMMARY")
         binding.btnCodPass.text = Lang.t(this, "UNIT AMAN DIBELI", "SAFE TO BUY / PASS")
-        binding.btnCodFail.text = Lang.t(this, "BATAL / MINUS BERAT", "REJECT / FAIL")
+        binding.btnCodFail.text = Lang.t(this, "BATAL / TOLAK UNIT", "REJECT / FAIL")
 
-        val ps = DiagnosticStore.priceState
-        if (ps.marketPriceIdr > 0L) binding.etMarketPrice.setText(ps.marketPriceIdr.toString())
-        binding.etTargetProfit.setText(ps.targetProfitIdr.toString())
-        if (ps.defectDeductionIdr > 0L) binding.etDefectDeduction.setText(ps.defectDeductionIdr.toString())
-        if (ps.customNote.isNotEmpty()) binding.etPriceNote.setText(ps.customNote)
+        if (DiagnosticStore.unitImeiNote.isNotBlank()) {
+            binding.tvScannedImeiResult.visibility = View.VISIBLE
+            binding.tvScannedImeiResult.text = "IMEI/SN Tercatat: ${DiagnosticStore.unitImeiNote}"
+        }
 
         binding.btnBackCod.setOnClickListener { finish() }
+        binding.btnCodImeiSettings.setOnClickListener {
+            if (!OemDeviceHelper.openDeviceInfoSettings(this)) {
+                openSettingsFallback(Settings.ACTION_SETTINGS)
+            }
+        }
         binding.btnCodDialImei.setOnClickListener {
-            try {
-                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:*%2306%23")))
-            } catch (_: Throwable) {
+            OemDeviceHelper.openSmartDialerWithCode(this, "*#06#")
+        }
+        binding.btnCodScanBarcode.setOnClickListener {
+            barcodeLauncher.launch(Intent(this, ImeiScannerActivity::class.java))
+        }
+        binding.btnCodOemQcCode.setOnClickListener {
+            OemDeviceHelper.showOemImeiAndQcDialog(this) {
+                barcodeLauncher.launch(Intent(this, ImeiScannerActivity::class.java))
             }
         }
         binding.btnCodOpenAccounts.setOnClickListener {
@@ -96,22 +153,6 @@ class CodPreBuyActivity : AppCompatActivity() {
         binding.btnCodOpenSecurity.setOnClickListener {
             openSettingsFallback(Settings.ACTION_SECURITY_SETTINGS)
         }
-
-        binding.btnAddBatDeduction.setOnClickListener { adjustDeduction(150_000L) }
-        binding.btnAddLcdDeduction.setOnClickListener { adjustDeduction(500_000L) }
-        binding.btnClearDeduction.setOnClickListener { binding.etDefectDeduction.setText("0") }
-
-        val watcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                recalculateOffer()
-            }
-        }
-        binding.etMarketPrice.addTextChangedListener(watcher)
-        binding.etTargetProfit.addTextChangedListener(watcher)
-        binding.etDefectDeduction.addTextChangedListener(watcher)
-        binding.etPriceNote.addTextChangedListener(watcher)
 
         binding.btnCodPass.setOnClickListener {
             refreshAutoSafety()
@@ -133,32 +174,33 @@ class CodPreBuyActivity : AppCompatActivity() {
                 Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            if (!binding.cbAccountClear.isChecked || !binding.cbImeiMatch.isChecked) {
+            if (!binding.cbAccountClear.isChecked || !binding.cbResetReady.isChecked || !binding.cbImeiMatch.isChecked) {
                 val msg = Lang.t(
                     this,
-                    "Centang verifikasi Akun bersih & IMEI cocok sebelum PASS!",
-                    "Check clean Account & IMEI match checkboxes before PASS!"
+                    "Centang Akun bersih, Siap Reset & IMEI cocok sebelum PASS!",
+                    "Check clean Account, Reset-Ready & IMEI match checkboxes before PASS!"
                 )
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            recalculateOffer()
-            val offerStr = "Rp ${ReportExporter.formatIdr(DiagnosticStore.priceState.maxSafeBuyPriceIdr)}"
+            val issueCount = DiagnosticStore.getItems().count {
+                (it.status == TestStatus.FAIL || it.status == TestStatus.WARN) && it.id != "pre_buy_safety"
+            }
+            val imeiTag = if (DiagnosticStore.unitImeiNote.isNotBlank()) " | IMEI:${DiagnosticStore.unitImeiNote.take(16)}" else ""
             DiagnosticStore.updateItem(
                 "pre_buy_safety",
-                TestStatus.PASS,
-                "Clean Lock/Accounts/IMEI | Max Safe Buy: $offerStr",
+                if (issueCount > 0) TestStatus.WARN else TestStatus.PASS,
+                "Clean Lock/Accounts/IMEI ($issueCount note(s))$imeiTag",
                 binding.tvCodAutoSafety.text.toString()
             )
             CodWizardFlow.advanceOrFinish(this)
         }
 
         binding.btnCodFail.setOnClickListener {
-            recalculateOffer()
             val reason = when {
                 criticalSecurityLockFound -> "Knox Guard / Finance Lock"
                 deviceSecureLockActive -> "Screen Lock / PIN Active"
-                else -> "Pre-Buy Check Rejected by Inspector"
+                else -> "Pre-Buy COD Check Rejected"
             }
             DiagnosticStore.updateItem(
                 "pre_buy_safety",
@@ -169,7 +211,6 @@ class CodPreBuyActivity : AppCompatActivity() {
             CodWizardFlow.advanceOrFinish(this)
         }
 
-        recalculateOffer()
         refreshAutoSafety()
     }
 
@@ -187,11 +228,6 @@ class CodPreBuyActivity : AppCompatActivity() {
             } catch (_: Throwable) {
             }
         }
-    }
-
-    private fun adjustDeduction(delta: Long) {
-        val current = binding.etDefectDeduction.text.toString().toLongOrNull() ?: 0L
-        binding.etDefectDeduction.setText((current + delta).toString())
     }
 
     private fun refreshAutoSafety() {
@@ -222,42 +258,53 @@ class CodPreBuyActivity : AppCompatActivity() {
             appendLine("Knox Guard    : ${fp.knoxGuardState}")
             appendLine("Finance/PayJoy: ${if (financeBad) fp.financePackagesFound.joinToString() else "Clean"}")
             appendLine("MDM Admin     : ${if (mdmBad) fp.mdmAdmins.joinToString() else "None"}")
-            appendLine("Cellular RF   : ${rf.serviceStateLabel} | Baseband=${rf.basebandVersion.take(20)}")
+            appendLine("Cellular RF   : ${rf.serviceStateLabel} | SIM1=${rf.sim1State} SIM2=${rf.sim2State}")
             append("Root/BL/Spec  : BL=${fp.bootloaderLocked} | Root=${fp.rootIndicators.size} | FakeSpec=${fp.specTamperWarnings.size}")
         }
 
         val fails = DiagnosticStore.getItems().filter { it.status == TestStatus.FAIL && it.id != "pre_buy_safety" }
-        binding.tvAutoDeductionHint.text = if (fails.isEmpty()) {
-            Lang.t(this, "Belum ada modul FAIL tercatat dari tes hardware.", "No hardware FAIL modules logged yet.")
-        } else {
-            Lang.t(
-                this,
-                "Terdeteksi ${fails.size} modul FAIL (${fails.joinToString { it.id }}): tambahkan potongan servis!",
-                "Detected ${fails.size} FAIL module(s) (${fails.joinToString { it.id }}): factor repair cost!"
-            )
-        }
-    }
+        val warns = DiagnosticStore.getItems().filter { it.status == TestStatus.WARN && it.id != "pre_buy_safety" }
 
-    private fun recalculateOffer() {
-        val market = binding.etMarketPrice.text.toString().toLongOrNull() ?: 0L
-        val profit = binding.etTargetProfit.text.toString().toLongOrNull() ?: 0L
-        val deduction = binding.etDefectDeduction.text.toString().toLongOrNull() ?: 0L
-        val note = binding.etPriceNote.text.toString().trim()
-        val state = PriceCalculatorState(
-            marketPriceIdr = market,
-            targetProfitIdr = profit,
-            defectDeductionIdr = deduction,
-            customNote = note
-        )
-        DiagnosticStore.savePriceState(state)
-        val maxStr = "Rp ${ReportExporter.formatIdr(state.maxSafeBuyPriceIdr)}"
-        val marketStr = "Rp ${ReportExporter.formatIdr(market)}"
-        val dedStr = "Rp ${ReportExporter.formatIdr(deduction)}"
-        binding.tvMaxBuyResult.text = Lang.t(
-            this,
-            "BATAS ANGKAT AMAN MAX: $maxStr\n(Pasar $marketStr - Laba Rp ${ReportExporter.formatIdr(profit)} - Minus $dedStr)",
-            "MAX SAFE BUY OFFER: $maxStr\n(Market $marketStr - Margin Rp ${ReportExporter.formatIdr(profit)} - Defect $dedStr)"
-        )
+        when {
+            criticalSecurityLockFound -> {
+                binding.tvAutoDefectVerdict.setBackgroundResource(R.drawable.bg_badge_fail)
+                binding.tvAutoDefectVerdict.setTextColor(ContextCompat.getColor(this, R.color.status_fail_fg))
+                binding.tvAutoDefectVerdict.text = Lang.t(
+                    this,
+                    "STATUS: BAHAYA TINGGI (TOLAK UNIT) - Terdeteksi Leasing/MDM/KnoxGuard!",
+                    "VERDICT: DO NOT BUY - Leasing / MDM / Knox Guard active!"
+                )
+            }
+            fails.isNotEmpty() || rf.hasDualSimSplitBlock -> {
+                binding.tvAutoDefectVerdict.setBackgroundResource(R.drawable.bg_badge_fail)
+                binding.tvAutoDefectVerdict.setTextColor(ContextCompat.getColor(this, R.color.status_fail_fg))
+                binding.tvAutoDefectVerdict.text = buildString {
+                    appendLine(Lang.t(this@CodPreBuyActivity, "TEMUAN MINUS KERAS (${fails.size} FAIL) - BAHAN NEGO / BATALKAN:", "CRITICAL DEFECTS (${fails.size} FAIL):"))
+                    if (rf.hasDualSimSplitBlock) {
+                        appendLine("- Slot SIM terblokir sebelah (Waspada IMEI Inter!)")
+                    }
+                    fails.forEach { appendLine("- [${it.titleId.take(26)}]: ${it.summary}") }
+                    warns.forEach { appendLine("- [CATATAN]: ${it.summary}") }
+                }
+            }
+            warns.isNotEmpty() -> {
+                binding.tvAutoDefectVerdict.setBackgroundResource(R.drawable.bg_badge_warn)
+                binding.tvAutoDefectVerdict.setTextColor(ContextCompat.getColor(this, R.color.status_warn_fg))
+                binding.tvAutoDefectVerdict.text = buildString {
+                    appendLine(Lang.t(this@CodPreBuyActivity, "ADA ${warns.size} CATATAN INSPEKSI (CEK SEBELUM DEAL):", "${warns.size} INSPECTION WARNING(S):"))
+                    warns.forEach { appendLine("- ${it.summary}") }
+                }
+            }
+            else -> {
+                binding.tvAutoDefectVerdict.setBackgroundResource(R.drawable.bg_badge_pass)
+                binding.tvAutoDefectVerdict.setTextColor(ContextCompat.getColor(this, R.color.status_pass_fg))
+                binding.tvAutoDefectVerdict.text = Lang.t(
+                    this,
+                    "STATUS: BERSIH - Belum ada minus hardware atau keamanan tercatat.",
+                    "VERDICT: CLEAN - No hardware defects or lock alerts detected."
+                )
+            }
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
