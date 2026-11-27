@@ -1,0 +1,34 @@
+# Gradle & Kotlin build caches
+.gradle/
+.kotlin/
+build/
+app/build/
+*/build/
+.cxx/
+.externalNativeBuild/
+
+# Android Studio / IntelliJ IDEA local files
+.idea/
+*.iml
+.navigation/
+captures/
+output.json
+
+# Local SDK paths & debug keystores
+local.properties
+*.jks
+*.keystore
+
+# Compiled binaries (distribute APKs via GitHub Releases)
+*.apk
+*.ap_
+*.aab
+*.dex
+
+# JVM / Gradle logs & temporary files
+replay_pid*.log
+hs_err_pid*.log
+*.log
+*.hprof
+.DS_Store
+Thumbs.db

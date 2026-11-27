@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_canvas">#0A0C0E</color>
+    <color name="bg_surface">#14181D</color>
+    <color name="bg_well">#1C2229</color>
+    <color name="bg_well_pressed">#27303A</color>
+
+    <color name="border_sharp">#323A45</color>
+    <color name="border_control">#5A6778</color>
+    <color name="border_focus">#FF8533</color>
+
+    <color name="text_primary">#F4F6F8</color>
+    <color name="text_secondary">#C2CCD6</color>
+    <color name="text_muted">#96A3B3</color>
+    <color name="text_on_accent">#0A0C0E</color>
+
+    <color name="accent_amber">#FF6B00</color>
+    <color name="accent_amber_pressed">#E05D00</color>
+    <color name="accent_amber_text">#FF8C38</color>
+
+    <color name="status_pass_fg">#4ADE80</color>
+    <color name="status_pass_bg">#0B2816</color>
+    <color name="status_pass_border">#22C55E</color>
+
+    <color name="status_warn_fg">#FBBF24</color>
+    <color name="status_warn_bg">#2B1F06</color>
+    <color name="status_warn_border">#D97706</color>
+
+    <color name="status_fail_fg">#F87171</color>
+    <color name="status_fail_bg">#311014</color>
+    <color name="status_fail_border">#DC2626</color>
+
+    <color name="status_ready_fg">#96A3B3</color>
+    <color name="status_ready_bg">#1C2229</color>
+    <color name="status_ready_border">#5A6778</color>
+</resources>

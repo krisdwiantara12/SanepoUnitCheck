@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Zero internet permission: 100% offline technician verification -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission
+        android:name="android.permission.USE_FINGERPRINT"
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+
+    <!-- Mark all hardware features optional so APK installs on tablets, Wi-Fi-only, and rugged phones -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.proximity" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.barometer" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.light" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SYNC_SETTINGS" />
+        </intent>
+        <package android:name="com.samsung.android.kgclient" />
+        <package android:name="com.payjoy.access" />
+        <package android:name="com.payjoy.status" />
+        <package android:name="com.novo.knox.lock" />
+        <package android:name="com.google.android.apps.work.clouddpc" />
+        <package android:name="com.google.android.apps.enterprise.dmagent" />
+        <package android:name="com.homecredit.finance" />
+        <package android:name="com.kredivo.paylater" />
+        <package android:name="com.trustonic.telecoms.standard.dlc" />
+        <package android:name="com.trustonic.telecoms.client.standard.dlc.playground" />
+    </queries>
+
+    <application
+        android:name=".SanepoApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SanepoUnitCheck"
+        tools:targetApi="36">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.DisplayTestActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SanepoUnitCheck.Fullscreen" />
+
+        <activity
+            android:name=".ui.TouchTestActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SanepoUnitCheck.Fullscreen" />
+
+        <activity
+            android:name=".ui.CameraTestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SanepoUnitCheck" />
+
+        <activity
+            android:name=".ui.AudioTestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SanepoUnitCheck" />
+
+        <activity
+            android:name=".ui.SensorTestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SanepoUnitCheck" />
+
+        <activity
+            android:name=".ui.BatteryDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SanepoUnitCheck" />
+
+        <activity
+            android:name=".ui.ConnectivityTestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SanepoUnitCheck" />
+
+        <activity
+            android:name=".ui.ButtonPortTestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SanepoUnitCheck" />
+
+        <activity
+            android:name=".ui.CodPreBuyActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SanepoUnitCheck"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.ReportActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SanepoUnitCheck"
+            android:windowSoftInputMode="adjustResize" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/report_paths" />
+        </provider>
+
+    </application>
+
+</manifest>
